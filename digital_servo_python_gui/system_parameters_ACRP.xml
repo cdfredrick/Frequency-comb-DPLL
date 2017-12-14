@@ -4,7 +4,7 @@
     <Output_limits_low DAC0="-1" DAC1="-1" DAC2="0" />
     <Output_limits_high DAC0="1" DAC1="1" DAC2="55" />
     <Input_Output_gain ADC0="1" ADC1="1" DAC0="1" DAC1="1" />
-    <Output_offset_in_volts DAC0="-0.05" DAC1="-0.02" DAC2="0" />
+    <Output_offset_in_volts DAC0="-0.00" DAC1="-0.00" DAC2="0" />
     <PLL0_settings chkKp="True" chkKd="False" chkKpCrossing="True" chkLock="True" fi="2.4e4" fii="8.71e2" kp="1e1" fd="1.07e5" fdf="1.7e2" />
     <PLL1_settings chkKp="True" chkKd="False" chkKpCrossing="True" chkLock="True" fi="1e5" fii="1.48e4" kp="-13.8e0" fd="1.38e5" fdf="8.7e5" />
     <PLL2_settings chkKp="False" chkKd="False" chkKpCrossing="False" chkLock="False" fi="1e-2" fii="0" kp="-120" fd="60e3" fdf="600e3" />
