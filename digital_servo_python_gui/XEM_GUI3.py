@@ -41,6 +41,12 @@ def main():
     
     # Specify the mapping between the MAC addresses (which are used as a form of serial numbers) and the box data
     devices_data = {}
+    devices_data['002632f05164'] = {'color': '#afafaf',
+                        'name': 'Astrocomb Red Pitaya',
+                        'shorthand': 'AC RP',
+                        'config file': 'system_parameters_ACRP.xml',
+                        #'port': 60002
+                        }
     devices_data['002632f016dc'] = {'color': '#1CC981',
                         'name': 'Red Pitaya 0',
                         'shorthand': 'RP 0',
@@ -191,14 +197,13 @@ def main():
         
     # Lookup filename and load if file is there:
     try:
-        custom_config_file = ''
         custom_config_file = devices_data[initial_config.strSelectedSerial]['config file']
         sp.loadFromFile(custom_config_file)
         print('Loaded configuration from %s' % custom_config_file)
     except (KeyError, IOError):
         strFileDefaultConfig = 'system_parameters_RP_Default.xml'
+        custom_config_file = ''
         print('Warning: Could not parse config file "%s" for FPGA serial: %s, loading values from file %s' % (custom_config_file, initial_config.strSelectedSerial, strFileDefaultConfig))
-        
         try:
             sp.loadFromFile(strFileDefaultConfig)
             print('Loaded configuration from %s' % strFileDefaultConfig)
@@ -245,13 +250,14 @@ def main():
     divider_settings_window = DisplayDividerAndResidualsStreamingSettingsWindow(sl, clk_divider_modulus=67e3, bDividerOn=0, bPulses=0, custom_style_sheet=custom_style_sheet, custom_shorthand=custom_shorthand, bUpdateFPGA = bSendToFPGA)    
     
     
-    # Optical lock window
-    xem_gui_mainwindow2 = XEM_GUI_MainWindow(sl, custom_shorthand + ': Optical lock', 1, (False, True, False), sp, custom_style_sheet, initial_config.strSelectedSerial)
-    xem_gui_mainwindow2.initSL(bTriggerEvents)
-    
     # CEO Lock window
     xem_gui_mainwindow = XEM_GUI_MainWindow(sl, custom_shorthand + ': CEO lock', 0, (True, False, False), sp, custom_style_sheet, initial_config.strSelectedSerial)
     xem_gui_mainwindow.initSL(bTriggerEvents)
+    
+    # Optical lock window
+    xem_gui_mainwindow2 = XEM_GUI_MainWindow(sl, custom_shorthand + ': Optical lock', 1, (False, True, False), sp, custom_style_sheet, initial_config.strSelectedSerial)
+    xem_gui_mainwindow2.initSL(bTriggerEvents)
+
     
     
 #    ###########################################################################
@@ -286,6 +292,7 @@ def main():
     strNameTemplate = 'data_logging\%s' % strOfTime
     strNameTemplate = '%s_%s_' % (strNameTemplate, initial_config.strSelectedSerial)
     freq_error_window1 = FreqErrorWindowWithTempControlV2(sl, 'CEO beat in-loop counter', 0, strNameTemplate, custom_style_sheet, 0, xem_gui_mainwindow)
+    #freq_error_window2 = FreqErrorWindowWithTempControlV2(sl, 'Optical beat in-loop counter', 1, strNameTemplate, custom_style_sheet, temp_control_port, None)
     freq_error_window2 = FreqErrorWindowWithTempControlV2(sl, 'Optical beat in-loop counter', 1, strNameTemplate, custom_style_sheet, temp_control_port, xem_gui_mainwindow2)
 
     counters_window = Qt.QWidget()
