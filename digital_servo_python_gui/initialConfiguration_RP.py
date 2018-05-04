@@ -7,7 +7,7 @@ Created on Fri Aug 26 00:26:50 2016
 from __future__ import print_function
 
 import sys
-from PyQt5 import QtGui, Qt
+from PyQt5 import QtGui, Qt, QtWidgets
 #import numpy as np
 import UDPRedPitayaDiscovery
 
@@ -16,7 +16,7 @@ import time
 from RP_PLL import RP_PLL_device # needed to update FPGA firmware and CPU (Zynq) software
 import socket
 
-class initialConfiguration(QtGui.QDialog):
+class initialConfiguration(QtWidgets.QDialog):
     
 
         
@@ -335,7 +335,7 @@ def main():
     
     
     # Start Qt:
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     
     
     # Load a first window which asks the user a question
