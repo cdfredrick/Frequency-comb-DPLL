@@ -134,7 +134,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
     def openOutputFiles(self):
         self.mongo_client = MongoDB.MongoClient()
         self.db = {}
-        self.STATE_DBs = ['mll_f0/state', 'cw_laser/state']
+        self.STATE_DBs = ['mll_f0/state', 'cw_laser/state_frequency']
         self.MONITOR_DBs = ['mll_f0/freq_err', 'mll_f0/dac_output', 'mll_f0/dac_limits'
                            'cw_laser/freq_err', 'cw_laser/dac_output', 'cw_laser/dac_limits'] 
         self.MASTER_DBs = self.STATE_DBs + self.MONITOR_DBs
@@ -142,7 +142,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.lock = {}
         for database in self.MASTER_DBs:
             self.lock[database] = threading.Lock()
-            self.db[database] = MongoDB.DatabaseMaster(self.mongo_client, database)
+            self.db[database] = MongoDB.DatabaseMaster(self.mongo_client, database, capped_collection_size=int(0.5/0.2*1e6))
         
         # Default State Settings
         self.STATE_SETTINGS = {
@@ -156,7 +156,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                         'desired_state':'lock',
                         'initialized':True,
                         'heartbeat':datetime.datetime.utcnow()},
-                'cw_laser/state':{
+                'cw_laser/state_frequency':{
                         'state':'lock',
                         'prerequisites':{
                                 'critical':True,
@@ -539,7 +539,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
             state_db = 'mll_f0/state'
         elif (self.output_number == 1):
         # 'cw_laser/freq_err' ---------------------
-            state_db = 'cw_laser/state'
+            state_db = 'cw_laser/state_frequency'
         # Try to read the lock state
         try:
             bLock = self.xem_gui_mainwindow.qchk_lock.isChecked()
@@ -799,7 +799,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                         # Propogate lap numbers -----------------------------------------
                             self.timer[monitor_db] = new_record_lap
                 # Heartbeat -----------------------------------------
-                    state_db = 'cw_laser/state'
+                    state_db = 'cw_laser/state_frequency'
                     with self.lock[state_db]:
                         self.local_settings[state_db]['heartbeat'] = datetime.datetime.utcnow()
                         self.db[state_db].write_buffer(self.local_settings[state_db])
