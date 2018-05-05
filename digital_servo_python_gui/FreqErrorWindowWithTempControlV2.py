@@ -7,10 +7,14 @@ from __future__ import print_function
 
 import sys
 import time
+import datetime
 from PyQt5 import QtGui, Qt, QtCore
 #import PyQt5.Qwt5 as Qwt
 import numpy as np
 import tables as tb
+import MongoDB
+import threading
+
 import math
 
 
@@ -30,10 +34,22 @@ import weakref
 # stuff for Python 3 port
 import pyqtgraph as pg
 
-# Description class for uptime record
-class Uptime(tb.IsDescription):
-    start = tb.Float64Col()
-    stop = tb.Float64Col()
+
+def get_lap(time_interval):
+    '''Use this function to get an incrementing integer linked to the system
+    clock.
+    '''
+    return int(time.time() // time_interval)
+
+def update_buffer(buffer, new_data, length):
+    '''Use this function to update a 1D rolling buffer, as typically found in
+    the monitor variables.
+    '''
+    length = int(abs(length))
+    buffer = np.append(buffer, new_data)
+    if buffer.size > length:
+        buffer = buffer[-length:]
+    return buffer
 
 class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
@@ -116,23 +132,74 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.time_history_counters = np.array([])
             
     def openOutputFiles(self):
-        
-        
-        # Create the subdirectory if it doesn't exist:
-        self.make_sure_path_exists('data_logging')
+        self.mongo_client = MongoDB.MongoClient()
+        self.db = {}
+        self.STATE_DBs = ['mll_f0/state', 'cw_laser/state']
+        self.MONITOR_DBs = ['mll_f0/freq_err', 'mll_f0/dac_output', 'mll_f0/dac_limits'
+                           'cw_laser/freq_err', 'cw_laser/dac_output', 'cw_laser/dac_limits'] 
+        self.MASTER_DBs = self.STATE_DBs + self.MONITOR_DBs
 
-        # Open file for output
-        strCurrentName1 = self.strNameTemplate + 'freq_counter{:}.bin'.format(self.output_number)
-        strCurrentName2 = self.strNameTemplate + 'freq_counter{:}_time_axis.bin'.format(self.output_number)
-        strCurrentName3 = self.strNameTemplate + 'DAC{:}.bin'.format(self.output_number)
-        strCurrentName4 = self.strNameTemplate + 'DAC{:}_time_axis.bin'.format(self.output_number)
-        strCurrentName5 = self.strNameTemplate + 'uptime{:}.h5'.format(self.output_number)
-        self.file_output_counter = open(strCurrentName1, 'wb')
-        self.file_output_counter_time = open(strCurrentName2, 'wb')
-        self.file_output_dac = open(strCurrentName3, 'wb')
-        self.file_output_dac_time = open(strCurrentName4, 'wb')
-        self.file_output_uptime = tb.open_file(strCurrentName5, mode="w", title="Uptime {:}".format(self.output_number))
-
+        self.lock = {}
+        for database in self.MASTER_DBs:
+            self.lock[database] = threading.Lock()
+            self.db[database] = MongoDB.DatabaseMaster(self.mongo_client, database)
+        
+        # Default State Settings
+        self.STATE_SETTINGS = {
+                'mll_f0/state':{
+                        'state':'lock',
+                        'prerequisites':{
+                                'critical':True,
+                                'necessary':True,
+                                'optional':True},
+                        'compliance':False,
+                        'desired_state':'lock',
+                        'initialized':True,
+                        'heartbeat':datetime.datetime.utcnow()},
+                'cw_laser/state':{
+                        'state':'lock',
+                        'prerequisites':{
+                                'critical':True,
+                                'necessary':True,
+                                'optional':True},
+                        'compliance':False,
+                        'desired_state':'lock',
+                        'initialized':True,
+                        'heartbeat':datetime.datetime.utcnow()}}
+        self.SETTINGS = self.STATE_SETTINGS
+        
+        # Local Settings
+        self.local_settings = {}
+        for database in self.SETTINGS:
+            with self.lock[database]:
+                self.local_settings[database] = self.db[database].read_buffer()
+            # Check all SETTINGS
+                db_initialized = True
+                for setting in self.SETTINGS[database]:
+                # Check that there is anything at all
+                    if (self.local_settings[database]==None):
+                        self.local_settings[database]={}
+                # Check that the key exists in the database
+                    if not(setting in self.local_settings[database]):
+                        db_initialized = False
+                        self.local_settings[database][setting] = self.SETTINGS[database][setting]
+                if not(db_initialized):
+                # Update the database values if necessary
+                    self.db[database].write_record_and_buffer(self.local_settings[database])
+            
+        # Initialize Record Timers and Data Arrays
+        self.record_timer = {}
+        self.record_interval = 10 #seconds
+        self.array = {}
+        for monitor_db in self.MONITOR_DBs:
+            self.record_timer[monitor_db] = get_lap(self.record_interval)
+            self.array[monitor_db] = np.array([])
+        
+        monitor_db = 'mll_f0/dac_limits'
+        with self.lock[monitor_db]:
+            # Append to the record array
+            self.array[monitor_db+'min'] = np.array([])
+            self.array[monitor_db+'max'] = np.array([])
         
     def initSL(self):
         
@@ -466,7 +533,13 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 #            print('Temp control disactivated.')
                     
 
-    def runAutoRecover(self, current_dac, current_time):
+    def runAutoRecover(self, current_dac, current_time, timestamp):
+        if (self.output_number == 0):
+        # 'mll_f0/freq_err' ---------------------
+            state_db = 'mll_f0/state'
+        elif (self.output_number == 1):
+        # 'cw_laser/freq_err' ---------------------
+            state_db = 'cw_laser/state'
         # Try to read the lock state
         try:
             bLock = self.xem_gui_mainwindow.qchk_lock.isChecked()
@@ -477,39 +550,43 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         if bLock and self.qchk_autorecover.isChecked():
         # If the lock and auto recovery are enabled
             if self.recovery_history.size == 0:
-            # If this is no history, make new uptime table
-                self.recovery_session = self.recovery_session + 1
-                self.uptime_table = self.file_output_uptime.create_table("/", "t"+str(self.recovery_session), Uptime, time.strftime("%c"))
-                self.uptime = self.uptime_table.row
-                self.uptime["start"] = current_time
-                self.uptime["stop"] = current_time
-                self.uptime.append()
-                self.uptime_table.flush()
             # Initialize timestamps
                 self.recovery_last_timestamp = current_time
                 self.recovery_lost_timestamp = current_time
                 self.recovery_gained_timestamp = current_time
                 self.bRecord_unlock = False
+            # Update state variable
+                with self.lock[state_db]:
+                    if not(self.local_settings[state_db]['compliance']):
+                        self.local_settings[state_db]['compliance'] = True
+                        self.db[state_db].write_record_and_buffer(self.local_settings[state_db])
             # Append to the DAC history if the sample size is too small
-                self.recovery_history = np.append(current_dac, self.recovery_history)
+                self.recovery_history = np.append(self.recovery_history, current_dac)
                 # Return NANs for plotting (mean, recovery threshold, DAC threshold)
                 return (np.nan, np.nan, np.nan, np.nan)
             elif self.recovery_history.size < 50:
             # Append to the DAC history if the sample size is too small
-                self.recovery_history = np.append(current_dac, self.recovery_history)
+                self.recovery_history = np.append(self.recovery_history, current_dac)
             # Update timestamps
                 self.recovery_last_timestamp = current_time
                 # Return NANs for plotting (mean, recovery threshold, DAC threshold)
                 return (np.nan, np.nan, np.nan, np.nan)
             else:
             # Calculate the historical mean and standard deviation
-                dac_mean = np.mean(self.recovery_history)
-                dac_std = np.std(self.recovery_history)
-                rec_threshold = self.recovery_thrsh_std
+                dac_std_threshold = self.recovery_thrsh_std
+                dac_range_threshold = 0.1
+                output_data = self.recovery_history
+                dac_avg = np.mean(output_data)
+                dac_avg_slope = np.mean(np.diff(output_data))/(len(output_data)-1)
+                dac_expected = dac_avg + dac_avg_slope*len(output_data)/2
+                dac_std = np.std(output_data - dac_avg_slope*np.arange(len(output_data)))
+                new_upper_limit = int(round(dac_expected + (dac_std_threshold*dac_std)/(1-2*dac_range_threshold)))
+                new_lower_limit = int(round(dac_expected - (dac_std_threshold*dac_std)/(1-2*dac_range_threshold)))
+                
             # Check for sudden changes
-                if np.abs(current_dac - dac_mean) > rec_threshold*dac_std:
+                if np.abs(current_dac - dac_expected) > dac_std_threshold*dac_std:
                 # If the current DAC value is out of bounds, relock to the average
-                    self.sl.set_dac_offset(self.output_number, int(dac_mean))
+                    self.sl.set_dac_offset(self.output_number, int(round(dac_expected)))
                     self.xem_gui_mainwindow.qloop_filters[self.output_number].qchk_lock.setChecked(False)
                     self.xem_gui_mainwindow.qloop_filters[self.output_number].updateFilterSettings()
                     self.xem_gui_mainwindow.qloop_filters[self.output_number].qchk_lock.setChecked(True)
@@ -518,9 +595,15 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 # Update the timestamps
                     self.recovery_lost_timestamp = self.recovery_last_timestamp
                     self.recovery_gained_timestamp = time.time()
+                    self.recovery_gained_datetime = datetime.datetime.utcnow()
                     self.bRecord_unlock = True
+                # Update State Variable
+                    with self.lock[state_db]:
+                        if (self.local_settings[state_db]['compliance']):
+                            self.local_settings[state_db]['compliance'] = False
+                            self.db[state_db].write_record_and_buffer(self.local_settings[state_db], timestamp=timestamp)
                 # Update the UI
-                    dac_in_slider_units = self.xem_gui_mainwindow.dac_offset_in_slider_units(dac_mean, self.output_number)
+                    dac_in_slider_units = self.xem_gui_mainwindow.dac_offset_in_slider_units(int(round(dac_expected)), self.output_number)
                     self.xem_gui_mainwindow.q_dac_offset[self.output_number].blockSignals(True)
                     self.xem_gui_mainwindow.q_dac_offset[self.output_number].setValue(dac_in_slider_units)
                     self.xem_gui_mainwindow.q_dac_offset[self.output_number].blockSignals(False)
@@ -528,27 +611,23 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 # If the current DAC value is locked and in bounds
                     if self.recovery_history.size < 500:
                     # Add it to the DAC history, appending up to a certain size
-                        self.recovery_history = np.append(current_dac, self.recovery_history)
+                        self.recovery_history = np.append(self.recovery_history, current_dac)
                     else:
                     # Roll the values otherwise
-                        self.recovery_history = np.roll(self.recovery_history, 1)
-                        self.recovery_history[0] = current_dac
+                        self.recovery_history = np.append(self.recovery_history[1:],current_dac)
                     if self.bRecord_unlock:
                     # If available, record an unlock event
-                        self.uptime["start"] = self.recovery_lost_timestamp
-                        self.uptime["stop"] = self.recovery_gained_timestamp
-                        self.uptime.append()
                         self.bRecord_unlock = False
+                    # Update state variable
+                        with self.lock[state_db]:
+                            self.local_settings[state_db]['compliance'] = True
+                            self.db[state_db].write_record_and_buffer(self.local_settings[state_db], timestamp=self.recovery_gained_datetime)
                 # Update the timestamps
                     self.recovery_last_timestamp = current_time
-                    self.uptime_table.cols.stop[0] = current_time
-                # Write to Uptime file
-                    self.uptime_table.flush()
             # Update DAC output limits
                 if self.qchk_limit_DAC.isChecked():
                 # If DAC output limits are enabled
-                    dac_threshold = 1.1*rec_threshold*dac_std
-                    self.sl.set_dac_limits(self.output_number, dac_mean - dac_threshold, dac_mean + dac_threshold)
+                    self.sl.set_dac_limits(self.output_number, new_lower_limit, new_upper_limit)
                     dac_limit_low = self.sl.restricted_DACs_limit_low[self.output_number]
                     dac_limit_high = self.sl.restricted_DACs_limit_high[self.output_number]
                 else:
@@ -559,7 +638,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                     dac_limit_low = np.nan
                     dac_limit_high = np.nan
             # Return the mean and thresholds for plotting
-                return (dac_mean, rec_threshold*dac_std, dac_limit_low, dac_limit_high)
+                return (int(round(dac_expected)), int(round(dac_std_threshold*dac_std)), dac_limit_low, dac_limit_high)
         else:
         # If lock or auto recovery are disabled
             if (self.recovery_history.size > 0) and self.qchk_limit_DAC:
@@ -567,11 +646,15 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 self.sl.set_dac_limits(self.output_number, self.sl.DACs_limit_low[self.output_number], self.sl.DACs_limit_high[self.output_number])
         # Clear the accumulated DAC history
             self.recovery_history = np.array([])
-            # Return NANs for plotting (mean, recovery threshold, DAC thresholds)
+        # Update State Variable
+            with self.lock[state_db]:
+                if (self.local_settings[state_db]['compliance']):
+                    self.local_settings[state_db]['compliance'] = False
+                    self.db[state_db].write_record_and_buffer(self.local_settings[state_db])
+        # Return NANs for plotting (mean, recovery threshold, DAC thresholds)
             return (np.nan, np.nan, np.nan, np.nan)
 
     
-        
     def displayFreqCounter(self):
 #        (freq_counter_samples, time_axis, DAC0_output, DAC1_output, DAC2_output) = self.sl.read_zero_deadtime_freq_counter(self.output_number)
         try:
@@ -582,6 +665,8 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 channelName = 'CEO'
             if self.output_number == 1:
                 channelName = 'Optical'
+            timestamp = datetime.datetime.utcnow()
+            new_record_lap = get_lap(self.record_interval)
         except:
             print('Exception occured reading counter data. disabling further updates.')
             self.killTimer(self.timerID)
@@ -596,34 +681,133 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         try:
             if time_axis is not None:
                 time_axis = np.mean(time_axis)
-                
                 if DAC0_output is not None and self.output_number is 0:
                     # Run auto recovery for DAC0
-                    dac_mean, dac_thrsh, dac_low, dac_high = self.runAutoRecover(np.mean(DAC0_output), time_axis)
+                    dac_mean, dac_thrsh, dac_low, dac_high = self.runAutoRecover(np.mean(DAC0_output), time_axis, timestamp)
                     dac_output = DAC0_output
-                    # Scale to minimum and maximum limits: 0 means minimum, 1 means maximum
-                    DAC0_output = (DAC0_output - self.sl.DACs_limit_low[0]).astype(np.float)/float(self.sl.DACs_limit_high[0] - self.sl.DACs_limit_low[0])
-                    # Write data to disk:
-                    self.file_output_dac_time.write(time_axis)
-                    self.file_output_dac.write(DAC0_output)
+                    # Scale to actual voltage:
+                    dac_scale = float(self.sl.DACs_limit_high[0] - self.sl.DACs_limit_low[0])/2.
+                    DAC0_output = DAC0_output/dac_scale
+                    DAC0_low = dac_low/dac_scale
+                    DAC0_high = dac_high/dac_scale
+                    
+                # 'mll_f0/dac_output' ---------------------
+                    monitor_db = 'mll_f0/dac_output'
+                    data = DAC0_output
+                    with self.lock[monitor_db]:
+                        # Append to the record array
+                        self.array[monitor_db] = np.append(self.array[monitor_db], data)
+                    self.db[monitor_db].write_buffer({'V':data}, timestamp=timestamp)
+                    # Update record
+                    if (new_record_lap > self.timer[monitor_db]):
+                        # Record statistics ---------------------
+                        self.db[monitor_db].write_record({
+                                'V':self.array[monitor_db].mean(),
+                                'std':self.array[monitor_db].std(),
+                                'n':self.array[monitor_db].size},
+                                timestamp=timestamp)
+                        # Empty the array
+                        with self.lock(monitor_db):
+                            self.array[monitor_db] = np.array([])
+                        # Propogate lap numbers -----------------------------------------
+                            self.timer[monitor_db] = new_record_lap
+                # 'mll_f0/dac_limits' ---------------------
+                    monitor_db = 'mll_f0/dac_limits'
+                    data_min = DAC0_low
+                    data_max = DAC0_high
+                    with self.lock[monitor_db]:
+                        # Append to the record array
+                        self.array[monitor_db+'min'] = np.append(self.array[monitor_db+'min'], data_min)
+                        self.array[monitor_db+'max'] = np.append(self.array[monitor_db+'max'], data_max)
+                    self.db[monitor_db].write_buffer({'min_V':data_min,'max_V':data_max}, timestamp=timestamp)
+                    # Update record
+                    if (new_record_lap > self.timer[monitor_db]):
+                        # Record statistics ---------------------
+                        self.db[monitor_db].write_record({
+                                'min_V':self.array[monitor_db+'min'].mean(),
+                                'min_std':self.array[monitor_db+'min'].std(),
+                                'min_n':self.array[monitor_db+'min'].size,
+                                'max_V':self.array[monitor_db+'max'].mean(),
+                                'max_std':self.array[monitor_db+'max'].std(),
+                                'max_n':self.array[monitor_db+'max'].size},
+                                timestamp=timestamp)
+                        # Empty the array
+                        with self.lock(monitor_db):
+                            self.array[monitor_db+'min'] = np.array([])
+                            self.array[monitor_db+'max'] = np.array([])
+                        # Propogate lap numbers -----------------------------------------
+                            self.timer[monitor_db] = new_record_lap
+                # Heartbeat -----------------------------------------
+                    state_db = 'mll_f0/state'
+                    with self.lock[state_db]:
+                        self.local_settings[state_db]['heartbeat'] = datetime.datetime.utcnow()
+                        self.db[state_db].write_buffer(self.local_settings[state_db])
                 
                 if DAC1_output is not None and self.output_number is 1:
                     # Run auto recovery for DAC1
-                    dac_mean, dac_thrsh, dac_low, dac_high = self.runAutoRecover(np.mean(DAC1_output), time_axis)
+                    dac_mean, dac_thrsh, dac_low, dac_high = self.runAutoRecover(np.mean(DAC1_output), time_axis, timestamp)
                     dac_output = DAC1_output
-                    # Scale to minimum and maximum limits: 0 means minimum, 1 means maximum
-                    DAC1_output = (DAC1_output - self.sl.DACs_limit_low[1]).astype(np.float)/float(self.sl.DACs_limit_high[1] - self.sl.DACs_limit_low[1])
-                    # Write data to disk:
-                    self.file_output_dac_time.write(time_axis)
-                    self.file_output_dac.write(DAC1_output)
+                    # Scale to actual voltage:
+                    dac_scale = float(self.sl.DACs_limit_high[1] - self.sl.DACs_limit_low[1])/2.
+                    DAC1_output = DAC1_output/dac_scale
+                    DAC1_low = dac_low/dac_scale
+                    DAC1_high = dac_high/dac_scale
+                    # 'cw_laser/dac_output' ---------------------
+                    monitor_db = 'cw_laser/dac_output'
+                    data = DAC1_output
+                    with self.lock[monitor_db]:
+                        # Append to the record array
+                        self.array[monitor_db] = np.append(self.array[monitor_db], data)
+                    self.db[monitor_db].write_buffer({'V':data}, timestamp=timestamp)
+                    # Update record
+                    if (new_record_lap > self.timer[monitor_db]):
+                        # Record statistics ---------------------
+                        self.db[monitor_db].write_record({
+                                'V':self.array[monitor_db].mean(),
+                                'std':self.array[monitor_db].std(),
+                                'n':self.array[monitor_db].size},
+                                timestamp=timestamp)
+                        # Empty the array
+                        with self.lock(monitor_db):
+                            self.array[monitor_db] = np.array([])
+                        # Propogate lap numbers -----------------------------------------
+                            self.timer[monitor_db] = new_record_lap
+                # 'cw_laser/dac_limits' ---------------------
+                    monitor_db = 'cw_laser/dac_limits'
+                    data_min = DAC1_low
+                    data_max = DAC1_high
+                    with self.lock[monitor_db]:
+                        # Append to the record array
+                        self.array[monitor_db+'min'] = np.append(self.array[monitor_db+'min'], data_min)
+                        self.array[monitor_db+'max'] = np.append(self.array[monitor_db+'max'], data_max)
+                    self.db[monitor_db].write_buffer({'min_V':data_min,'max_V':data_max}, timestamp=timestamp)
+                    # Update record
+                    if (new_record_lap > self.timer[monitor_db]):
+                        # Record statistics ---------------------
+                        self.db[monitor_db].write_record({
+                                'min_V':self.array[monitor_db+'min'].mean(),
+                                'min_std':self.array[monitor_db+'min'].std(),
+                                'min_n':self.array[monitor_db+'min'].size,
+                                'max_V':self.array[monitor_db+'max'].mean(),
+                                'max_std':self.array[monitor_db+'max'].std(),
+                                'max_n':self.array[monitor_db+'max'].size},
+                                timestamp=timestamp)
+                        # Empty the array
+                        with self.lock(monitor_db):
+                            self.array[monitor_db+'min'] = np.array([])
+                            self.array[monitor_db+'max'] = np.array([])
+                        # Propogate lap numbers -----------------------------------------
+                            self.timer[monitor_db] = new_record_lap
+                # Heartbeat -----------------------------------------
+                    state_db = 'cw_laser/state'
+                    with self.lock[state_db]:
+                        self.local_settings[state_db]['heartbeat'] = datetime.datetime.utcnow()
+                        self.db[state_db].write_buffer(self.local_settings[state_db])
                 
                 if DAC2_output is not None and self.output_number is 2:
                     # Scale to minimum and maximum limits: 0 means minimum, 1 means maximum
                     DAC2_output = (DAC2_output - self.sl.DACs_limit_low[2]).astype(np.float)/float(self.sl.DACs_limit_high[2] - self.sl.DACs_limit_low[2])
                     # Write data to disk:
-                    self.file_output_dac2.write(DAC2_output)
-                
-                    self.runTempControlLoop(time.clock(), DAC2_output[-1:])
                 
                 if (DAC0_output is not None) or (DAC1_output is not None):
                     # Scale to volts
@@ -666,8 +850,30 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 
                 if freq_counter_samples is not None:
                     # Write data to disk:
-                    self.file_output_counter.write(freq_counter_samples)
-                    self.file_output_counter_time.write(time_axis)
+                    if (self.output_number == 0):
+                    # 'mll_f0/freq_err' ---------------------
+                        monitor_db = 'mll_f0/freq_err'
+                    elif (self.output_number == 1):
+                    # 'cw_laser/freq_err' ---------------------
+                        monitor_db = 'cw_laser/freq_err'
+                    data = freq_counter_samples
+                    with self.lock[monitor_db]:
+                        # Append to the record array
+                        self.array[monitor_db] = np.append(self.array[monitor_db], data)
+                    self.db[monitor_db].write_buffer({'Hz':data}, timestamp=timestamp)
+                    # Update record
+                    if (new_record_lap > self.timer[monitor_db]):
+                        # Record statistics ---------------------
+                        self.db[monitor_db].write_record({
+                                'Hz':self.array[monitor_db].mean(),
+                                'std':self.array[monitor_db].std(),
+                                'n':self.array[monitor_db].size},
+                                timestamp=timestamp)
+                        # Empty the array
+                        with self.lock(monitor_db):
+                            self.array[monitor_db] = np.array([])
+                        # Propogate lap numbers -----------------------------------------
+                            self.timer[monitor_db] = new_record_lap
 
                     # Write to plot buffers
                     self.freq_history = np.append(self.freq_history, freq_counter_samples)
@@ -731,4 +937,5 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         except OSError as exception:
             if exception.errno != errno.EEXIST:
                 raise
+                
                 
