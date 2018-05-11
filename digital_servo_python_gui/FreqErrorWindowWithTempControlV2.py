@@ -135,7 +135,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.mongo_client = MongoDB.MongoClient()
         self.db = {}
         self.STATE_DBs = ['mll_f0/state', 'cw_laser/state_frequency']
-        self.MONITOR_DBs = ['mll_f0/freq_err', 'mll_f0/dac_output', 'mll_f0/dac_limits'
+        self.MONITOR_DBs = ['mll_f0/freq_err', 'mll_f0/dac_output', 'mll_f0/dac_limits',
                            'cw_laser/freq_err', 'cw_laser/dac_output', 'cw_laser/dac_limits'] 
         self.MASTER_DBs = self.STATE_DBs + self.MONITOR_DBs
 
@@ -200,6 +200,13 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
             # Append to the record array
             self.array[monitor_db+'min'] = np.array([])
             self.array[monitor_db+'max'] = np.array([])
+        
+        monitor_db = 'cw_laser/dac_limits'
+        with self.lock[monitor_db]:
+            # Append to the record array
+            self.array[monitor_db+'min'] = np.array([])
+            self.array[monitor_db+'max'] = np.array([])
+        
         
     def initSL(self):
         
@@ -693,13 +700,13 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                     
                 # 'mll_f0/dac_output' ---------------------
                     monitor_db = 'mll_f0/dac_output'
-                    data = DAC0_output
+                    data = np.mean(DAC0_output)
                     with self.lock[monitor_db]:
                         # Append to the record array
                         self.array[monitor_db] = np.append(self.array[monitor_db], data)
                     self.db[monitor_db].write_buffer({'V':data}, timestamp=timestamp)
                     # Update record
-                    if (new_record_lap > self.timer[monitor_db]):
+                    if (new_record_lap > self.record_timer[monitor_db]):
                         # Record statistics ---------------------
                         self.db[monitor_db].write_record({
                                 'V':self.array[monitor_db].mean(),
@@ -707,21 +714,21 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                                 'n':self.array[monitor_db].size},
                                 timestamp=timestamp)
                         # Empty the array
-                        with self.lock(monitor_db):
+                        with self.lock[monitor_db]:
                             self.array[monitor_db] = np.array([])
                         # Propogate lap numbers -----------------------------------------
-                            self.timer[monitor_db] = new_record_lap
+                            self.record_timer[monitor_db] = new_record_lap
                 # 'mll_f0/dac_limits' ---------------------
                     monitor_db = 'mll_f0/dac_limits'
-                    data_min = DAC0_low
-                    data_max = DAC0_high
+                    data_min = np.mean(DAC0_low)
+                    data_max = np.mean(DAC0_high)
                     with self.lock[monitor_db]:
                         # Append to the record array
                         self.array[monitor_db+'min'] = np.append(self.array[monitor_db+'min'], data_min)
                         self.array[monitor_db+'max'] = np.append(self.array[monitor_db+'max'], data_max)
                     self.db[monitor_db].write_buffer({'min_V':data_min,'max_V':data_max}, timestamp=timestamp)
                     # Update record
-                    if (new_record_lap > self.timer[monitor_db]):
+                    if (new_record_lap > self.record_timer[monitor_db]):
                         # Record statistics ---------------------
                         self.db[monitor_db].write_record({
                                 'min_V':self.array[monitor_db+'min'].mean(),
@@ -732,11 +739,11 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                                 'max_n':self.array[monitor_db+'max'].size},
                                 timestamp=timestamp)
                         # Empty the array
-                        with self.lock(monitor_db):
+                        with self.lock[monitor_db]:
                             self.array[monitor_db+'min'] = np.array([])
                             self.array[monitor_db+'max'] = np.array([])
                         # Propogate lap numbers -----------------------------------------
-                            self.timer[monitor_db] = new_record_lap
+                            self.record_timer[monitor_db] = new_record_lap
                 # Heartbeat -----------------------------------------
                     state_db = 'mll_f0/state'
                     with self.lock[state_db]:
@@ -754,13 +761,13 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                     DAC1_high = dac_high/dac_scale
                     # 'cw_laser/dac_output' ---------------------
                     monitor_db = 'cw_laser/dac_output'
-                    data = DAC1_output
+                    data = np.mean(DAC1_output)
                     with self.lock[monitor_db]:
                         # Append to the record array
                         self.array[monitor_db] = np.append(self.array[monitor_db], data)
                     self.db[monitor_db].write_buffer({'V':data}, timestamp=timestamp)
                     # Update record
-                    if (new_record_lap > self.timer[monitor_db]):
+                    if (new_record_lap > self.record_timer[monitor_db]):
                         # Record statistics ---------------------
                         self.db[monitor_db].write_record({
                                 'V':self.array[monitor_db].mean(),
@@ -768,21 +775,21 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                                 'n':self.array[monitor_db].size},
                                 timestamp=timestamp)
                         # Empty the array
-                        with self.lock(monitor_db):
+                        with self.lock[monitor_db]:
                             self.array[monitor_db] = np.array([])
                         # Propogate lap numbers -----------------------------------------
-                            self.timer[monitor_db] = new_record_lap
+                            self.record_timer[monitor_db] = new_record_lap
                 # 'cw_laser/dac_limits' ---------------------
                     monitor_db = 'cw_laser/dac_limits'
-                    data_min = DAC1_low
-                    data_max = DAC1_high
+                    data_min = np.mean(DAC1_low)
+                    data_max = np.mean(DAC1_high)
                     with self.lock[monitor_db]:
                         # Append to the record array
                         self.array[monitor_db+'min'] = np.append(self.array[monitor_db+'min'], data_min)
                         self.array[monitor_db+'max'] = np.append(self.array[monitor_db+'max'], data_max)
                     self.db[monitor_db].write_buffer({'min_V':data_min,'max_V':data_max}, timestamp=timestamp)
                     # Update record
-                    if (new_record_lap > self.timer[monitor_db]):
+                    if (new_record_lap > self.record_timer[monitor_db]):
                         # Record statistics ---------------------
                         self.db[monitor_db].write_record({
                                 'min_V':self.array[monitor_db+'min'].mean(),
@@ -793,11 +800,11 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                                 'max_n':self.array[monitor_db+'max'].size},
                                 timestamp=timestamp)
                         # Empty the array
-                        with self.lock(monitor_db):
+                        with self.lock[monitor_db]:
                             self.array[monitor_db+'min'] = np.array([])
                             self.array[monitor_db+'max'] = np.array([])
                         # Propogate lap numbers -----------------------------------------
-                            self.timer[monitor_db] = new_record_lap
+                            self.record_timer[monitor_db] = new_record_lap
                 # Heartbeat -----------------------------------------
                     state_db = 'cw_laser/state_frequency'
                     with self.lock[state_db]:
@@ -856,13 +863,13 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                     elif (self.output_number == 1):
                     # 'cw_laser/freq_err' ---------------------
                         monitor_db = 'cw_laser/freq_err'
-                    data = freq_counter_samples
+                    data = np.mean(freq_counter_samples)
                     with self.lock[monitor_db]:
                         # Append to the record array
                         self.array[monitor_db] = np.append(self.array[monitor_db], data)
                     self.db[monitor_db].write_buffer({'Hz':data}, timestamp=timestamp)
                     # Update record
-                    if (new_record_lap > self.timer[monitor_db]):
+                    if (new_record_lap > self.record_timer[monitor_db]):
                         # Record statistics ---------------------
                         self.db[monitor_db].write_record({
                                 'Hz':self.array[monitor_db].mean(),
@@ -870,10 +877,10 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                                 'n':self.array[monitor_db].size},
                                 timestamp=timestamp)
                         # Empty the array
-                        with self.lock(monitor_db):
+                        with self.lock[monitor_db]:
                             self.array[monitor_db] = np.array([])
                         # Propogate lap numbers -----------------------------------------
-                            self.timer[monitor_db] = new_record_lap
+                            self.record_timer[monitor_db] = new_record_lap
 
                     # Write to plot buffers
                     self.freq_history = np.append(self.freq_history, freq_counter_samples)
