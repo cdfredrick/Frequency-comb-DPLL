@@ -99,7 +99,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
     display_phase = 0 # used to refresh the phase noise plot only once every N refresh cycles
     VCO_detected_gain_in_Hz_per_Volts = [1, 1, 1]
-    bFirstTimeLockCheckBoxClicked = True
+    bFirstTimeLockCheckBoxClicked = False
         
 #    def __init__(self):
 #        super(XEM_GUI_MainWindow, self).__init__()
@@ -1494,7 +1494,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 max_output_in_volts = float(self.sp.getValue('Output_limits_high', strDAC))
                 slider_units = (output_offset_in_volts - min_output_in_volts)/(max_output_in_volts-min_output_in_volts) * 1e6
                 print('calling dac offset slider setValue()')
-                self.q_dac_offset[k].blockSignals(True)
+                self.q_dac_offset[k].blockSignals(True) 
                 self.q_dac_offset[k].setValue(slider_units)
                 self.q_dac_offset[k].blockSignals(False)
                 print('done calling dac offset slider setValue()')
@@ -1520,10 +1520,10 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         self.qedit_ref_freq.reset_my_color()
         
         if bTriggerEvents == True:
+            self.chkLockClickedEvent()
             self.setVCOFreq_event()
             self.setVCOGain_event()
-    #        self.setDACOffset_event()  # not needed because setVCOGain_event calls it anyway
-            self.chkLockClickedEvent()
+#            self.setDACOffset_event()  # not needed because setVCOGain_event calls it anyway
             if self.output_controls[0] == True:
                 self.setPWM0_event()
             
