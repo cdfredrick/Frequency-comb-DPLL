@@ -23,11 +23,11 @@ set_input_jitter clk_fpga_3 0.15
 create_clock -name clk_fpga_2 -period "20" [get_pins "PS7_i/FCLKCLK[2]"]
 set_input_jitter clk_fpga_2 0.6
 #The clocks are asynchronous, user should constrain them appropriately.#
-create_clock -name clk_fpga_1 -period "4" [get_pins "PS7_i/FCLKCLK[1]"]
-set_input_jitter clk_fpga_1 0.12
-#The clocks are asynchronous, user should constrain them appropriately.#
 create_clock -name clk_fpga_0 -period "8" [get_pins "PS7_i/FCLKCLK[0]"]
 set_input_jitter clk_fpga_0 0.24
+#The clocks are asynchronous, user should constrain them appropriately.#
+create_clock -name clk_fpga_1 -period "4" [get_pins "PS7_i/FCLKCLK[1]"]
+set_input_jitter clk_fpga_1 0.12
 #The clocks are asynchronous, user should constrain them appropriately.#
 
 
@@ -344,7 +344,7 @@ set_property PACKAGE_PIN "A5" [get_ports "MIO[6]"]
 set_property slew "slow" [get_ports "MIO[6]"]
 set_property drive "8" [get_ports "MIO[6]"]
 set_property PIO_DIRECTION "OUTPUT" [get_ports "MIO[6]"]
-#  Quad SPI Flash / qspi0_io[3] / MIO[5]
+#  Quad SPI Flash / qspi0_io[3]/HOLD_B / MIO[5]
 set_property iostandard "LVCMOS33" [get_ports "MIO[5]"]
 set_property PACKAGE_PIN "A6" [get_ports "MIO[5]"]
 set_property slew "slow" [get_ports "MIO[5]"]
@@ -698,14 +698,11 @@ set_property slew "SLOW" [get_ports "DDR_Addr[0]"]
 set_property PIO_DIRECTION "OUTPUT" [get_ports "DDR_Addr[0]"]
 set_property iostandard "LVCMOS33" [get_ports "PS_PORB"]
 set_property PACKAGE_PIN "C7" [get_ports "PS_PORB"]
-set_property slew "slow" [get_ports "PS_PORB"]
-set_property drive "8" [get_ports "PS_PORB"]
+set_property slew "fast" [get_ports "PS_PORB"]
 set_property iostandard "LVCMOS25" [get_ports "PS_SRSTB"]
 set_property PACKAGE_PIN "B10" [get_ports "PS_SRSTB"]
-set_property slew "slow" [get_ports "PS_SRSTB"]
-set_property drive "8" [get_ports "PS_SRSTB"]
+set_property slew "fast" [get_ports "PS_SRSTB"]
 set_property iostandard "LVCMOS33" [get_ports "PS_CLK"]
 set_property PACKAGE_PIN "E7" [get_ports "PS_CLK"]
-set_property slew "slow" [get_ports "PS_CLK"]
-set_property drive "8" [get_ports "PS_CLK"]
+set_property slew "fast" [get_ports "PS_CLK"]
 

@@ -1,8 +1,8 @@
-Copyright 1986-2015 Xilinx, Inc. All Rights Reserved.
+Copyright 1986-2018 Xilinx, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
-| Tool Version : Vivado v.2015.4 (win64) Build 1412921 Wed Nov 18 09:43:45 MST 2015
-| Date         : Sat Jun 23 00:23:53 2018
-| Host         : jdbureau running 64-bit major release  (build 9200)
+| Tool Version : Vivado v.2018.3 (win64) Build 2405991 Thu Dec  6 23:38:27 MST 2018
+| Date         : Thu Feb 21 13:44:54 2019
+| Host         : 688DDH running 64-bit major release  (build 9200)
 | Command      : report_utilization -file fir_compiler_minimumphase_N_times_clk_utilization_synth.rpt -pb fir_compiler_minimumphase_N_times_clk_utilization_synth.pb
 | Design       : fir_compiler_minimumphase_N_times_clk
 | Device       : 7z010clg400-1
@@ -30,8 +30,8 @@ Table of Contents
 +----------------------------+------+-------+-----------+-------+
 |          Site Type         | Used | Fixed | Available | Util% |
 +----------------------------+------+-------+-----------+-------+
-| Slice LUTs*                |   44 |     0 |     17600 |  0.25 |
-|   LUT as Logic             |   19 |     0 |     17600 |  0.11 |
+| Slice LUTs*                |   42 |     0 |     17600 |  0.24 |
+|   LUT as Logic             |   17 |     0 |     17600 |  0.10 |
 |   LUT as Memory            |   25 |     0 |      6000 |  0.42 |
 |     LUT as Distributed RAM |    0 |     0 |           |       |
 |     LUT as Shift Register  |   25 |     0 |           |       |
@@ -101,7 +101,7 @@ Table of Contents
 | OUT_FIFO                    |    0 |     0 |         8 |  0.00 |
 | IN_FIFO                     |    0 |     0 |         8 |  0.00 |
 | IDELAYCTRL                  |    0 |     0 |         2 |  0.00 |
-| IBUFGDS                     |    0 |     0 |        96 |  0.00 |
+| IBUFDS                      |    0 |     0 |        96 |  0.00 |
 | PHASER_OUT/PHASER_OUT_PHY   |    0 |     0 |         8 |  0.00 |
 | PHASER_IN/PHASER_IN_PHY     |    0 |     0 |         8 |  0.00 |
 | IDELAYE2/IDELAYE2_FINEDELAY |    0 |     0 |       100 |  0.00 |
@@ -151,10 +151,10 @@ Table of Contents
 +----------+------+---------------------+
 | FDRE     |   99 |        Flop & Latch |
 | SRL16E   |   25 |  Distributed Memory |
-| LUT2     |    8 |                 LUT |
 | LUT1     |    8 |                 LUT |
 | DSP48E1  |    8 |    Block Arithmetic |
 | LUT4     |    6 |                 LUT |
+| LUT2     |    6 |                 LUT |
 | LUT3     |    3 |                 LUT |
 +----------+------+---------------------+
 

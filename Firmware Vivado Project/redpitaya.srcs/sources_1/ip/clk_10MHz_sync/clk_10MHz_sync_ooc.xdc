@@ -1,3 +1,4 @@
+
 # file: clk_10MHz_sync_ooc.xdc
 # 
 # (c) Copyright 2008 - 2013 Xilinx, Inc. All rights reserved.
@@ -53,4 +54,5 @@
 ############################################################
 # Clock Period Constraints                                 #
 ############################################################
-#create_clock -period 8.0 [get_ports clk_in1]
+#create_clock -period 8.000 [get_ports clk_in1]
+

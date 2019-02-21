@@ -1,8 +1,8 @@
-Copyright 1986-2015 Xilinx, Inc. All Rights Reserved.
+Copyright 1986-2018 Xilinx, Inc. All Rights Reserved.
 -----------------------------------------------------------------------------------------------------------------------------
-| Tool Version : Vivado v.2015.4 (win64) Build 1412921 Wed Nov 18 09:43:45 MST 2015
-| Date         : Sat Jun 23 00:23:21 2018
-| Host         : jdbureau running 64-bit major release  (build 9200)
+| Tool Version : Vivado v.2018.3 (win64) Build 2405991 Thu Dec  6 23:38:27 MST 2018
+| Date         : Thu Feb 21 13:44:46 2019
+| Host         : 688DDH running 64-bit major release  (build 9200)
 | Command      : report_utilization -file pll_32x32_mult_ii_utilization_synth.rpt -pb pll_32x32_mult_ii_utilization_synth.pb
 | Design       : pll_32x32_mult_ii
 | Device       : 7z010clg400-1
@@ -101,7 +101,7 @@ Table of Contents
 | OUT_FIFO                    |    0 |     0 |         8 |  0.00 |
 | IN_FIFO                     |    0 |     0 |         8 |  0.00 |
 | IDELAYCTRL                  |    0 |     0 |         2 |  0.00 |
-| IBUFGDS                     |    0 |     0 |        96 |  0.00 |
+| IBUFDS                      |    0 |     0 |        96 |  0.00 |
 | PHASER_OUT/PHASER_OUT_PHY   |    0 |     0 |         8 |  0.00 |
 | PHASER_IN/PHASER_IN_PHY     |    0 |     0 |         8 |  0.00 |
 | IDELAYE2/IDELAYE2_FINEDELAY |    0 |     0 |       100 |  0.00 |

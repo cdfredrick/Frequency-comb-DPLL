@@ -1,9 +1,9 @@
-// Copyright 1986-2015 Xilinx, Inc. All Rights Reserved.
+// Copyright 1986-2018 Xilinx, Inc. All Rights Reserved.
 // --------------------------------------------------------------------------------
-// Tool Version: Vivado v.2015.4 (win64) Build 1412921 Wed Nov 18 09:43:45 MST 2015
-// Date        : Sat Jun 23 00:23:57 2018
-// Host        : jdbureau running 64-bit major release  (build 9200)
-// Command     : write_verilog -force -mode funcsim {D:/Repo/Frequency-comb-DPLL/Firmware Vivado
+// Tool Version: Vivado v.2018.3 (win64) Build 2405991 Thu Dec  6 23:38:27 MST 2018
+// Date        : Thu Feb 21 13:35:32 2019
+// Host        : 688DDH running 64-bit major release  (build 9200)
+// Command     : write_verilog -force -mode funcsim {C:/Git/Frequency-comb-DPLL/Firmware Vivado
 //               Project/redpitaya.srcs/sources_1/ip/clk_10MHz_sync/clk_10MHz_sync_sim_netlist.v}
 // Design      : clk_10MHz_sync
 // Purpose     : This verilog netlist is a functional simulation representation of the design and should not be modified
@@ -12,15 +12,14 @@
 // --------------------------------------------------------------------------------
 `timescale 1 ps / 1 ps
 
-(* CORE_GENERATION_INFO = "clk_10MHz_sync,clk_wiz_v5_2_1,{component_name=clk_10MHz_sync,use_phase_alignment=true,use_min_o_jitter=false,use_max_i_jitter=false,use_dyn_phase_shift=false,use_inclk_switchover=false,use_dyn_reconfig=false,enable_axi=0,feedback_source=FDBK_AUTO,PRIMITIVE=MMCM,num_out_clk=1,clkin1_period=8.0,clkin2_period=10.0,use_power_down=false,use_reset=false,use_locked=true,use_inclk_stopped=false,feedback_type=SINGLE,CLOCK_MGR_TYPE=NA,manual_override=false}" *) 
 (* NotValidForBitStream *)
 module clk_10MHz_sync
-   (clk_in1,
-    clk_out1,
-    locked);
-  input clk_in1;
+   (clk_out1,
+    locked,
+    clk_in1);
   output clk_out1;
   output locked;
+  input clk_in1;
 
   (* IBUF_LOW_PWR *) wire clk_in1;
   wire clk_out1;
@@ -34,12 +33,12 @@ endmodule
 
 (* ORIG_REF_NAME = "clk_10MHz_sync_clk_wiz" *) 
 module clk_10MHz_sync_clk_10MHz_sync_clk_wiz
-   (clk_in1,
-    clk_out1,
-    locked);
-  input clk_in1;
+   (clk_out1,
+    locked,
+    clk_in1);
   output clk_out1;
   output locked;
+  input clk_in1;
 
   wire clk_in1;
   wire clk_in1_clk_10MHz_sync;
@@ -217,8 +216,8 @@ module glbl ();
     reg JTAG_USER_TDO3_GLBL = 1'bz;
     reg JTAG_USER_TDO4_GLBL = 1'bz;
 
-    assign (weak1, weak0) GSR = GSR_int;
-    assign (weak1, weak0) GTS = GTS_int;
+    assign (strong1, weak0) GSR = GSR_int;
+    assign (strong1, weak0) GTS = GTS_int;
     assign (weak1, weak0) PRLD = PRLD_int;
 
     initial begin

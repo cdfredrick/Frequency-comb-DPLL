@@ -1,3 +1,4 @@
+
 // file: clk_10MHz_sync.v
 // 
 // (c) Copyright 2008 - 2013 Xilinx, Inc. All rights reserved.
@@ -55,7 +56,7 @@
 //  Output     Output      Phase    Duty Cycle   Pk-to-Pk     Phase
 //   Clock     Freq (MHz)  (degrees)    (%)     Jitter (ps)  Error (ps)
 //----------------------------------------------------------------------------
-// CLK_OUT1____10.000______0.000______50.0______197.700_____96.948
+// clk_out1____10.000______0.000______50.0______197.700_____96.948
 //
 //----------------------------------------------------------------------------
 // Input Clock   Freq (MHz)    Input Jitter (UI)
@@ -65,19 +66,22 @@
 `timescale 1ps/1ps
 
 module clk_10MHz_sync_clk_wiz 
+
  (// Clock in ports
-  input         clk_in1,
   // Clock out ports
   output        clk_out1,
   // Status and control signals
-  output        locked
+  output        locked,
+  input         clk_in1
  );
-
   // Input buffering
   //------------------------------------
+wire clk_in1_clk_10MHz_sync;
+wire clk_in2_clk_10MHz_sync;
   IBUF clkin1_ibufg
    (.O (clk_in1_clk_10MHz_sync),
     .I (clk_in1));
+
 
 
 
@@ -87,6 +91,15 @@ module clk_10MHz_sync_clk_wiz
   // Instantiation of the MMCM PRIMITIVE
   //    * Unused inputs are tied off
   //    * Unused outputs are labeled unused
+
+  wire        clk_out1_clk_10MHz_sync;
+  wire        clk_out2_clk_10MHz_sync;
+  wire        clk_out3_clk_10MHz_sync;
+  wire        clk_out4_clk_10MHz_sync;
+  wire        clk_out5_clk_10MHz_sync;
+  wire        clk_out6_clk_10MHz_sync;
+  wire        clk_out7_clk_10MHz_sync;
+
   wire [15:0] do_unused;
   wire        drdy_unused;
   wire        psdone_unused;
@@ -120,7 +133,7 @@ module clk_10MHz_sync_clk_wiz
     .CLKOUT0_PHASE        (0.000),
     .CLKOUT0_DUTY_CYCLE   (0.500),
     .CLKOUT0_USE_FINE_PS  ("FALSE"),
-    .CLKIN1_PERIOD        (8.0))
+    .CLKIN1_PERIOD        (8.000))
   mmcm_adv_inst
     // Output clocks
    (
@@ -163,15 +176,18 @@ module clk_10MHz_sync_clk_wiz
     .PWRDWN              (1'b0),
     .RST                 (1'b0));
 
-
   assign locked = locked_int;
-
-  // Output buffering
+// Clock Monitor clock assigning
+//--------------------------------------
+ // Output buffering
   //-----------------------------------
 
   BUFG clkf_buf
    (.O (clkfbout_buf_clk_10MHz_sync),
     .I (clkfbout_clk_10MHz_sync));
+
+
+
 
 
 

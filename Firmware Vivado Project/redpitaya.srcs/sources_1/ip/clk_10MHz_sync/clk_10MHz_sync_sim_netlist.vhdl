@@ -1,9 +1,9 @@
--- Copyright 1986-2015 Xilinx, Inc. All Rights Reserved.
+-- Copyright 1986-2018 Xilinx, Inc. All Rights Reserved.
 -- --------------------------------------------------------------------------------
--- Tool Version: Vivado v.2015.4 (win64) Build 1412921 Wed Nov 18 09:43:45 MST 2015
--- Date        : Sat Jun 23 00:23:57 2018
--- Host        : jdbureau running 64-bit major release  (build 9200)
--- Command     : write_vhdl -force -mode funcsim {D:/Repo/Frequency-comb-DPLL/Firmware Vivado
+-- Tool Version: Vivado v.2018.3 (win64) Build 2405991 Thu Dec  6 23:38:27 MST 2018
+-- Date        : Thu Feb 21 13:35:32 2019
+-- Host        : 688DDH running 64-bit major release  (build 9200)
+-- Command     : write_vhdl -force -mode funcsim {C:/Git/Frequency-comb-DPLL/Firmware Vivado
 --               Project/redpitaya.srcs/sources_1/ip/clk_10MHz_sync/clk_10MHz_sync_sim_netlist.vhdl}
 -- Design      : clk_10MHz_sync
 -- Purpose     : This VHDL netlist is a functional simulation representation of the design and should not be modified or
@@ -16,9 +16,9 @@ library UNISIM;
 use UNISIM.VCOMPONENTS.ALL;
 entity clk_10MHz_sync_clk_10MHz_sync_clk_wiz is
   port (
-    clk_in1 : in STD_LOGIC;
     clk_out1 : out STD_LOGIC;
-    locked : out STD_LOGIC
+    locked : out STD_LOGIC;
+    clk_in1 : in STD_LOGIC
   );
   attribute ORIG_REF_NAME : string;
   attribute ORIG_REF_NAME of clk_10MHz_sync_clk_10MHz_sync_clk_wiz : entity is "clk_10MHz_sync_clk_wiz";
@@ -168,14 +168,12 @@ library UNISIM;
 use UNISIM.VCOMPONENTS.ALL;
 entity clk_10MHz_sync is
   port (
-    clk_in1 : in STD_LOGIC;
     clk_out1 : out STD_LOGIC;
-    locked : out STD_LOGIC
+    locked : out STD_LOGIC;
+    clk_in1 : in STD_LOGIC
   );
   attribute NotValidForBitStream : boolean;
   attribute NotValidForBitStream of clk_10MHz_sync : entity is true;
-  attribute CORE_GENERATION_INFO : string;
-  attribute CORE_GENERATION_INFO of clk_10MHz_sync : entity is "clk_10MHz_sync,clk_wiz_v5_2_1,{component_name=clk_10MHz_sync,use_phase_alignment=true,use_min_o_jitter=false,use_max_i_jitter=false,use_dyn_phase_shift=false,use_inclk_switchover=false,use_dyn_reconfig=false,enable_axi=0,feedback_source=FDBK_AUTO,PRIMITIVE=MMCM,num_out_clk=1,clkin1_period=8.0,clkin2_period=10.0,use_power_down=false,use_reset=false,use_locked=true,use_inclk_stopped=false,feedback_type=SINGLE,CLOCK_MGR_TYPE=NA,manual_override=false}";
 end clk_10MHz_sync;
 
 architecture STRUCTURE of clk_10MHz_sync is

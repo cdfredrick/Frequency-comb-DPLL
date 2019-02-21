@@ -40,19 +40,19 @@
 
 module red_pitaya_ams (
    // ADC
-   input                 clk_i           ,  // clock
-   input                 rstn_i          ,  // reset - active low
+   input wire            clk_i           ,  // clock
+   input wire            rstn_i          ,  // reset - active low
    // PWM DAC
    output reg [ 24-1: 0] dac_a_o         ,  // values used for
    output reg [ 24-1: 0] dac_b_o         ,  // conversion into PWM signal
    output reg [ 24-1: 0] dac_c_o         ,  // 
    output reg [ 24-1: 0] dac_d_o         ,  // 
    // system bus
-   input      [ 32-1: 0] sys_addr        ,  // bus address
-   input      [ 32-1: 0] sys_wdata       ,  // bus write data
-   input      [  4-1: 0] sys_sel         ,  // bus write byte select
-   input                 sys_wen         ,  // bus write enable
-   input                 sys_ren         ,  // bus read enable
+   input wire [ 32-1: 0] sys_addr        ,  // bus address
+   input wire [ 32-1: 0] sys_wdata       ,  // bus write data
+   input wire [  4-1: 0] sys_sel         ,  // bus write byte select
+   input wire            sys_wen         ,  // bus write enable
+   input wire            sys_ren         ,  // bus read enable
    output reg [ 32-1: 0] sys_rdata       ,  // bus read data
    output reg            sys_err         ,  // bus error indicator
    output reg            sys_ack            // bus acknowledge signal

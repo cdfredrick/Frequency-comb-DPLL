@@ -3,46 +3,40 @@
 
 # XDC: imports/sdc/red_pitaya.xdc
 
-# IP: ip/LO_DDS/LO_DDS.xci
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==LO_DDS || ORIG_REF_NAME==LO_DDS}]
-
 # Block Designs: bd/system/system.bd
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system || ORIG_REF_NAME==system}]
+set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system || ORIG_REF_NAME==system} -quiet] -quiet
 
 # IP: bd/system/ip/system_axi_protocol_converter_0_0/system_axi_protocol_converter_0_0.xci
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_axi_protocol_converter_0_0 || ORIG_REF_NAME==system_axi_protocol_converter_0_0}]
+set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_axi_protocol_converter_0_0 || ORIG_REF_NAME==system_axi_protocol_converter_0_0} -quiet] -quiet
 
 # IP: bd/system/ip/system_proc_sys_reset_0/system_proc_sys_reset_0.xci
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_proc_sys_reset_0 || ORIG_REF_NAME==system_proc_sys_reset_0}]
+set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_proc_sys_reset_0 || ORIG_REF_NAME==system_proc_sys_reset_0} -quiet] -quiet
 
 # IP: bd/system/ip/system_processing_system7_0/system_processing_system7_0.xci
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_processing_system7_0 || ORIG_REF_NAME==system_processing_system7_0}]
+set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_processing_system7_0 || ORIG_REF_NAME==system_processing_system7_0} -quiet] -quiet
 
 # IP: bd/system/ip/system_xadc_0/system_xadc_0.xci
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_xadc_0 || ORIG_REF_NAME==system_xadc_0}]
+set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_xadc_0 || ORIG_REF_NAME==system_xadc_0} -quiet] -quiet
 
 # IP: bd/system/ip/system_xlconstant_0/system_xlconstant_0.xci
-set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_xlconstant_0 || ORIG_REF_NAME==system_xlconstant_0}]
-
-# IPX: ip/LO_DDS.xcix
-#dup# set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==LO_DDS || ORIG_REF_NAME==LO_DDS}]
+set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_xlconstant_0 || ORIG_REF_NAME==system_xlconstant_0} -quiet] -quiet
 
 # XDC: bd/system/ip/system_axi_protocol_converter_0_0/system_axi_protocol_converter_0_0_ooc.xdc
 
 # XDC: bd/system/ip/system_proc_sys_reset_0/system_proc_sys_reset_0_board.xdc
-#dup# set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_proc_sys_reset_0 || ORIG_REF_NAME==system_proc_sys_reset_0}]
+set_property DONT_TOUCH TRUE [get_cells [split [join [get_cells -hier -filter {REF_NAME==system_proc_sys_reset_0 || ORIG_REF_NAME==system_proc_sys_reset_0} -quiet] {/U0 } ]/U0 ] -quiet] -quiet
 
 # XDC: bd/system/ip/system_proc_sys_reset_0/system_proc_sys_reset_0.xdc
-#dup# set_property DONT_TOUCH TRUE [get_cells -hier -filter {REF_NAME==system_proc_sys_reset_0 || ORIG_REF_NAME==system_proc_sys_reset_0}]
+#dup# set_property DONT_TOUCH TRUE [get_cells [split [join [get_cells -hier -filter {REF_NAME==system_proc_sys_reset_0 || ORIG_REF_NAME==system_proc_sys_reset_0} -quiet] {/U0 } ]/U0 ] -quiet] -quiet
 
 # XDC: bd/system/ip/system_proc_sys_reset_0/system_proc_sys_reset_0_ooc.xdc
 
 # XDC: bd/system/ip/system_processing_system7_0/system_processing_system7_0.xdc
-set_property DONT_TOUCH TRUE [get_cells [split [join [get_cells -hier -filter {REF_NAME==system_processing_system7_0 || ORIG_REF_NAME==system_processing_system7_0}] {/inst }]/inst ]]
+set_property DONT_TOUCH TRUE [get_cells [split [join [get_cells -hier -filter {REF_NAME==system_processing_system7_0 || ORIG_REF_NAME==system_processing_system7_0} -quiet] {/inst } ]/inst ] -quiet] -quiet
 
 # XDC: bd/system/ip/system_xadc_0/system_xadc_0_ooc.xdc
 
 # XDC: bd/system/ip/system_xadc_0/system_xadc_0.xdc
-set_property DONT_TOUCH TRUE [get_cells [split [join [get_cells -hier -filter {REF_NAME==system_xadc_0 || ORIG_REF_NAME==system_xadc_0}] {/inst }]/inst ]]
+set_property DONT_TOUCH TRUE [get_cells [split [join [get_cells -hier -filter {REF_NAME==system_xadc_0 || ORIG_REF_NAME==system_xadc_0} -quiet] {/inst } ]/inst ] -quiet] -quiet
 
 # XDC: bd/system/system_ooc.xdc

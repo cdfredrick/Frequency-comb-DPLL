@@ -51,44 +51,44 @@ module red_pitaya_scope #(
   parameter RSZ = 14  // RAM size 2^RSZ
 )(
    // ADC
-   input                 adc_clk_i       ,  // ADC clock
-   input                 adc_rstn_i      ,  // ADC reset - active low
-   input      [ 14-1: 0] adc_a_i         ,  // ADC data CHA
-   input      [ 14-1: 0] adc_b_i         ,  // ADC data CHB
+   input  wire            adc_clk_i       ,  // ADC clock
+   input  wire            adc_rstn_i      ,  // ADC reset - active low
+   input  wire [ 14-1: 0] adc_a_i         ,  // ADC data CHA
+   input  wire [ 14-1: 0] adc_b_i         ,  // ADC data CHB
    // trigger sources
-   input                 trig_ext_i      ,  // external trigger
-   input                 trig_asg_i      ,  // ASG trigger
+   input  wire            trig_ext_i      ,  // external trigger
+   input  wire            trig_asg_i      ,  // ASG trigger
 
    // AXI0 master
-   output                axi0_clk_o      ,  // global clock
-   output                axi0_rstn_o     ,  // global reset
-   output     [ 32-1: 0] axi0_waddr_o    ,  // system write address
-   output     [ 64-1: 0] axi0_wdata_o    ,  // system write data
-   output     [  8-1: 0] axi0_wsel_o     ,  // system write byte select
-   output                axi0_wvalid_o   ,  // system write data valid
-   output     [  4-1: 0] axi0_wlen_o     ,  // system write burst length
-   output                axi0_wfixed_o   ,  // system write burst type (fixed / incremental)
-   input                 axi0_werr_i     ,  // system write error
-   input                 axi0_wrdy_i     ,  // system write ready
+   output wire            axi0_clk_o      ,  // global clock
+   output wire            axi0_rstn_o     ,  // global reset
+   output wire [ 32-1: 0] axi0_waddr_o    ,  // system write address
+   output wire [ 64-1: 0] axi0_wdata_o    ,  // system write data
+   output wire [  8-1: 0] axi0_wsel_o     ,  // system write byte select
+   output wire            axi0_wvalid_o   ,  // system write data valid
+   output wire [  4-1: 0] axi0_wlen_o     ,  // system write burst length
+   output wire            axi0_wfixed_o   ,  // system write burst type (fixed / incremental)
+   input  wire            axi0_werr_i     ,  // system write error
+   input  wire            axi0_wrdy_i     ,  // system write ready
 
    // AXI1 master
-   output                axi1_clk_o      ,  // global clock
-   output                axi1_rstn_o     ,  // global reset
-   output     [ 32-1: 0] axi1_waddr_o    ,  // system write address
-   output     [ 64-1: 0] axi1_wdata_o    ,  // system write data
-   output     [  8-1: 0] axi1_wsel_o     ,  // system write byte select
-   output                axi1_wvalid_o   ,  // system write data valid
-   output     [  4-1: 0] axi1_wlen_o     ,  // system write burst length
-   output                axi1_wfixed_o   ,  // system write burst type (fixed / incremental)
-   input                 axi1_werr_i     ,  // system write error
-   input                 axi1_wrdy_i     ,  // system write ready
+   output wire            axi1_clk_o      ,  // global clock
+   output wire            axi1_rstn_o     ,  // global reset
+   output wire [ 32-1: 0] axi1_waddr_o    ,  // system write address
+   output wire [ 64-1: 0] axi1_wdata_o    ,  // system write data
+   output wire [  8-1: 0] axi1_wsel_o     ,  // system write byte select
+   output wire            axi1_wvalid_o   ,  // system write data valid
+   output wire [  4-1: 0] axi1_wlen_o     ,  // system write burst length
+   output wire            axi1_wfixed_o   ,  // system write burst type (fixed / incremental)
+   input  wire            axi1_werr_i     ,  // system write error
+   input  wire            axi1_wrdy_i     ,  // system write ready
   
    // System bus
-   input      [ 32-1: 0] sys_addr      ,  // bus saddress
-   input      [ 32-1: 0] sys_wdata     ,  // bus write data
-   input      [  4-1: 0] sys_sel       ,  // bus write byte select
-   input                 sys_wen       ,  // bus write enable
-   input                 sys_ren       ,  // bus read enable
+   input  wire [ 32-1: 0] sys_addr      ,  // bus saddress
+   input  wire [ 32-1: 0] sys_wdata     ,  // bus write data
+   input  wire [  4-1: 0] sys_sel       ,  // bus write byte select
+   input  wire            sys_wen       ,  // bus write enable
+   input  wire            sys_ren       ,  // bus read enable
    output reg [ 32-1: 0] sys_rdata     ,  // bus read data
    output reg            sys_err       ,  // bus error indicator
    output reg            sys_ack          // bus acknowledge signal
