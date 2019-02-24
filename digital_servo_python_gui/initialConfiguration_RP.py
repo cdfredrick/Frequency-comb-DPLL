@@ -382,7 +382,10 @@ class initialConfiguration(QtGui.QDialog):
 		
 	def closeEvent(self, e):
 		print('close')
-		del self.udp_discovery
+		try:
+			del self.udp_discovery
+		except AttributeError:
+			pass # udp_discovery has already been deleted
 		return
 
 def main():
