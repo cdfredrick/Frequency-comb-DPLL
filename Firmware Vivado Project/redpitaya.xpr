@@ -1057,23 +1057,23 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/ram_data_logger_testbench_behav.wcfg">
+      <File Path="$PSRCDIR/sim_1/imports/DigitalPLL/ram_data_logger_testbench_behav.wcfg">
         <FileInfo>
           <Attr Name="UserDisabled" Val="1"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/n_times_clk_fir_wrapper_testbench_behav.wcfg">
+      <File Path="$PSRCDIR/sim_1/imports/DigitalPLL/n_times_clk_fir_wrapper_testbench_behav.wcfg">
         <FileInfo>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/system_identification_vna_with_dither_testbench_behav.wcfg">
+      <File Path="$PSRCDIR/sim_1/imports/DigitalPLL/system_identification_vna_with_dither_testbench_behav.wcfg">
         <FileInfo>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/registers_read_testbench_behav.wcfg">
+      <File Path="$PSRCDIR/sim_1/imports/DigitalPLL/registers_read_testbench_behav.wcfg">
         <FileInfo>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
