@@ -21,16 +21,16 @@
 
 module red_pitaya_dfilt1 (
    // ADC
-   input                 adc_clk_i       ,  //!< ADC clock
-   input                 adc_rstn_i      ,  //!< ADC reset - active low
-   input      [ 14-1: 0] adc_dat_i       ,  //!< ADC data
-   output     [ 14-1: 0] adc_dat_o       ,  //!< ADC data
+   input  wire            adc_clk_i       ,  //!< ADC clock
+   input  wire            adc_rstn_i      ,  //!< ADC reset - active low
+   input  wire [ 14-1: 0] adc_dat_i       ,  //!< ADC data
+   output wire [ 14-1: 0] adc_dat_o       ,  //!< ADC data
 
    // configuration
-   input      [ 18-1: 0] cfg_aa_i        ,  //!< config AA coefficient
-   input      [ 25-1: 0] cfg_bb_i        ,  //!< config BB coefficient
-   input      [ 25-1: 0] cfg_kk_i        ,  //!< config KK coefficient
-   input      [ 25-1: 0] cfg_pp_i           //!< config PP coefficient
+   input wire  [ 18-1: 0] cfg_aa_i        ,  //!< config AA coefficient
+   input wire  [ 25-1: 0] cfg_bb_i        ,  //!< config BB coefficient
+   input wire  [ 25-1: 0] cfg_kk_i        ,  //!< config KK coefficient
+   input wire  [ 25-1: 0] cfg_pp_i           //!< config PP coefficient
 );
 
 //---------------------------------------------------------------------------------

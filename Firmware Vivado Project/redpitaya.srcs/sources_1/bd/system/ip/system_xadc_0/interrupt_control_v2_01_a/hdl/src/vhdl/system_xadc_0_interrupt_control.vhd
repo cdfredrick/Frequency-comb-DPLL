@@ -114,7 +114,7 @@
 -- ^^^^^^
 --     GAB     07/02/2008     v2_01_a
 -- ~~~~~~
---     - Modified to used proc_common_v3_20_a library
+--     - Modified to used proc_common_v3_30_a library
 -- ^^^^^^
 --
 -------------------------------------------------------------------------------
