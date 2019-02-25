@@ -702,7 +702,7 @@ multiplexer_3to1_async loop_filters_1_mux (
  .selector_mux                      (loop_filter_1_mux_selector ),
  .in0_mux                           (DDC1_output                ), 
  .in1_mux                           (inst_frequency0            ),
- .in2_mux                           (pll0_output >> 5           ), //pll0_output is 15 bits and in2_mux is 10 bits
+ .in2_mux                           (pll0_output >> 6           ), //pll0_output is 16 bits and in2_mux is 10 bits
  .out_mux                           (inst_frequency1            )
 );
 
