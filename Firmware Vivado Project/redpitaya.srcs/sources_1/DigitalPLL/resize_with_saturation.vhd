@@ -47,7 +47,7 @@ end resize_with_saturation;
 architecture Behavioral of resize_with_saturation is
 
 	constant MAX_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(1, N_OUTPUT), N_OUTPUT-1)-1;	-- (2^(N_OUTPUT-1)-1)
-	constant MIN_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(-1, N_OUTPUT), N_OUTPUT-1);	-- (-2**(N_OUTPUT-1))
+	constant MIN_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(-1, N_OUTPUT), N_OUTPUT-1)+1;	-- (-2^(N_OUTPUT-1)+1), avoid "most negative number"
 
 	-- these signals have no other purpose than to give a default value to the outputs so that there are no undefined values in simulation
 	signal railed_positive_temp : std_logic := '0';

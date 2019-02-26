@@ -680,8 +680,17 @@ DDC_wideband_filters DDC1_inst (
 
 
 
-
+///////////////////////////////////////////////////////////////////////////////
+// Multiplexer for PLL1 input
+///////////////////////////////////////////////////////////////////////////////
 wire [2-1:0] loop_filter_1_mux_selector;
+wire [(10-1):0] inst_frequency0_to_pll1;
+wire [(10-1):0] pll0_output_to_pll1;
+
+// Change the sign of the input based on the chosen sign of the VCO gain (sign of the reference frequency)
+assign inst_frequency0_to_pll1 = reference_frequency1[47] ? (-$signed(inst_frequency0)) : inst_frequency0;
+assign pll0_output_to_pll1 = reference_frequency1[47] ? (-$signed(pll0_output) >> 6) : (pll0_output >> 6); //pll0_output is 16 bits and in2_mux is 10 bits
+
 // Registers which controls the multiplexer for the PLL1 input:
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(2),
@@ -701,8 +710,8 @@ multiplexer_3to1_async loop_filters_1_mux (
  .clk                               (clk1                       ),
  .selector_mux                      (loop_filter_1_mux_selector ),
  .in0_mux                           (DDC1_output                ), 
- .in1_mux                           (inst_frequency0            ),
- .in2_mux                           (pll0_output >> 5           ), //pll0_output is 15 bits and in2_mux is 10 bits
+ .in1_mux                           (inst_frequency0_to_pll1    ),
+ .in2_mux                           (pll0_output_to_pll1        ),
  .out_mux                           (inst_frequency1            )
 );
 
