@@ -681,43 +681,6 @@ DDC_wideband_filters DDC1_inst (
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// Multiplexer for PLL1 input
-///////////////////////////////////////////////////////////////////////////////
-wire [2-1:0] loop_filter_1_mux_selector;
-wire [(10-1):0] inst_frequency0_to_pll1;
-wire [(10-1):0] pll0_output_to_pll1;
-
-// Change the sign of the input based on the chosen sign of the VCO gain (sign of the reference frequency)
-assign inst_frequency0_to_pll1 = reference_frequency1[47] ? (-$signed(inst_frequency0)) : inst_frequency0;
-assign pll0_output_to_pll1 = reference_frequency1[47] ? (-$signed(pll0_output) >> 6) : (pll0_output >> 6); //pll0_output is 16 bits and in2_mux is 10 bits
-
-// Registers which controls the multiplexer for the PLL1 input:
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(2),
-    .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(16'h9000)
-)
-parallel_bus_register_mux_pll1  (
- .clk                           (clk1                       ), 
- .bus_strobe                    (cmd_trig                   ), 
- .bus_address                   (cmd_addr                   ), 
- .bus_data                      ({cmd_data2in, cmd_data1in} ), 
- .register_output               (loop_filter_1_mux_selector ), 
- .update_flag                   (                           )
-);
-
-multiplexer_3to1_async loop_filters_1_mux (
- .clk                               (clk1                       ),
- .selector_mux                      (loop_filter_1_mux_selector ),
- .in0_mux                           (DDC1_output                ), 
- .in1_mux                           (inst_frequency0_to_pll1    ),
- .in2_mux                           (pll0_output_to_pll1        ),
- .out_mux                           (inst_frequency1            )
-);
-
-
-     
-///////////////////////////////////////////////////////////////////////////////
 // Counts the frequency with no dead-time using a short bandlimiting filter  + an integrate and dump.
 // Output rate will be fs/2^LOG2_N_CYCLES_INTEGRATION ~ 12.5 Hz
 // Results are sent to a FIFO which goes to an Opal Kelly PipeOut
@@ -930,10 +893,10 @@ assign pll0_gain_changed = pll0_gain_changedp | pll0_gain_changedi | pll0_gain_c
      
 // Finally the PLL itself:
 PLL_loop_filters_with_saturation # (
-    .N_DIVIDE_P(24-11),  // changed 2017-05-02 by JDD from 24 to 24-11 to recenter gain for RedPitaya connected to a laser with 8e8 Hz/V of VCO gain and 20 kHz of 1st order cutoff
-    .N_DIVIDE_I(24), 
-    .N_DIVIDE_II(35),
-    .N_DIVIDE_D(0),
+    .N_DIVIDE_P(10), // min gain & max error -> smallest output
+    .N_DIVIDE_I(32), // min gain & max error -> smallest output
+    .N_DIVIDE_II(55), // min gain & max error -> largest output in ~4400s (max gain & max error -> largest output in 1us)
+    .N_DIVIDE_D(11), // min gain & max error -> smallest magnitude output
     .N_OUTPUT(16)
 )
 PLL0_loop_filters (
@@ -952,6 +915,45 @@ PLL0_loop_filters (
     .saturated_high()
     );
 
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Multiplexer for PLL1 input
+///////////////////////////////////////////////////////////////////////////////
+wire [2-1:0] loop_filter_1_mux_selector;
+wire [(10-1):0] inst_frequency0_to_pll1;
+wire [(10-1):0] pll0_output_to_pll1;
+
+// Change the sign of the input based on the chosen sign of the VCO gain (sign of the reference frequency)
+assign inst_frequency0_to_pll1 = reference_frequency1[47] ? (-$signed(inst_frequency0)) : inst_frequency0;
+assign pll0_output_to_pll1 = reference_frequency1[47] ? (-$signed(pll0_output) >> 6) : (pll0_output >> 6); //pll0_output is 16 bits and in2_mux is 10 bits
+
+// Registers which controls the multiplexer for the PLL1 input:
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(2),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(16'h9000)
+)
+parallel_bus_register_mux_pll1  (
+ .clk                           (clk1                       ), 
+ .bus_strobe                    (cmd_trig                   ), 
+ .bus_address                   (cmd_addr                   ), 
+ .bus_data                      ({cmd_data2in, cmd_data1in} ), 
+ .register_output               (loop_filter_1_mux_selector ), 
+ .update_flag                   (                           )
+);
+
+multiplexer_3to1_async loop_filters_1_mux (
+ .clk                               (clk1                       ),
+ .selector_mux                      (loop_filter_1_mux_selector ),
+ .in0_mux                           (DDC1_output                ), 
+ .in1_mux                           (inst_frequency0_to_pll1    ),
+ .in2_mux                           (pll0_output_to_pll1        ),
+ .out_mux                           (inst_frequency1            )
+);
+
+
+     
 ///////////////////////////////////////////////////////////////////////////////
 // Loop filters for DAC 1:
 wire pll1_lock, pll1_gain_changedp, pll1_gain_changedi, pll1_gain_changedii, pll1_gain_changedd, pll1_coef_changedd;
@@ -1064,10 +1066,10 @@ assign pll1_gain_changed = pll1_gain_changedp | pll1_gain_changedi | pll1_gain_c
      
 // Finally the PLL itself:
 PLL_loop_filters_with_saturation # (
-    .N_DIVIDE_P(11),
-    .N_DIVIDE_I(18),
-    .N_DIVIDE_II(29),
-    .N_DIVIDE_D(0),
+    .N_DIVIDE_P(10), // min gain & max error -> smallest output
+    .N_DIVIDE_I(32), // min gain & max error -> smallest output
+    .N_DIVIDE_II(55), // min gain & max error -> largest output in ~4400s (max gain & max error -> largest output in 1us)
+    .N_DIVIDE_D(11), // min gain & max error -> smallest magnitude output
     .N_OUTPUT(16)
 )
 PLL1_loop_filters (

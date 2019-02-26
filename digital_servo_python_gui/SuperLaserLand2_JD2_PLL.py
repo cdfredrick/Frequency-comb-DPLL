@@ -185,10 +185,10 @@ class PLL0_module(Loop_filters_module):
     
     # Values that are fixed in the firmware (VHDL/Verilog code)
     bus_base_address = 0x7000
-    N_DIVIDE_P = 24-11 # changed 2017-05-02 by JDD from 24 to 24-11 to recenter gain for RedPitaya connected to a laser with 8e8 Hz/V of VCO gain and 20 kHz of 1st order cutoff
-    N_DIVIDE_I = 24
-    N_DIVIDE_II = 35
-    N_DIVIDE_D = 0
+    N_DIVIDE_P = 10
+    N_DIVIDE_I = 32
+    N_DIVIDE_II = 55
+    N_DIVIDE_D = 11
     N_DIVIDE_DF = 18
     
     def __init__(self, sl):
@@ -198,10 +198,10 @@ class PLL1_module(Loop_filters_module):
     
     # Values that are fixed in the firmware (VHDL/Verilog code)
     bus_base_address = 0x7010
-    N_DIVIDE_P = 11
-    N_DIVIDE_I = 19
-    N_DIVIDE_II = 28
-    N_DIVIDE_D = 0
+    N_DIVIDE_P = 10
+    N_DIVIDE_I = 32
+    N_DIVIDE_II = 55
+    N_DIVIDE_D = 11
     N_DIVIDE_DF = 18
 
     
