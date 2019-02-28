@@ -14,7 +14,7 @@ class Loop_filters_module(object):
     BUS_OFFSET_gain_i        = 0x2
     BUS_OFFSET_gain_ii       = 0x3
     BUS_OFFSET_gain_d        = 0x4
-    BUS_OFFSET_coef_d_filt   = 0x5
+    BUS_OFFSET_coef_df   = 0x5
     
     def __init__(self, bus_base_address, N_DIVIDE_P, N_DIVIDE_I, N_DIVIDE_II, N_DIVIDE_D, N_DIVIDE_DF):
         self.bus_base_address = bus_base_address
@@ -27,45 +27,79 @@ class Loop_filters_module(object):
         self.gain_i = 0.
         self.gain_ii = 0.
         self.gain_d = 0.
-        self.coef_d = 0.
+        self.coef_df = 0.
         
         self.N_delay_p = 5 # TODO: put the correct values here
         self.N_delay_i = 6 # TODO: put the correct values here
         self.N_delay_ii = 7 # TODO: put the correct values here
         self.N_delay_d = 7 # TODO: put the correct values here
-        
-    def get_p_limits(self):
-        # These are the real, hardware limits for the multipler operands
-        # However, there is another limit which could be lower which is when
-        # even the quantization noise at the input (only 1 LSB) can rail the output.
-        limit_railing = 2.**(16+self.N_DIVIDE_P)/2.**self.N_DIVIDE_P
-#        return (1./2.**self.N_DIVIDE_P, 2.**31/2.**self.N_DIVIDE_P)
-        return (0./2.**self.N_DIVIDE_P, min([(2.**32-1)/2.**self.N_DIVIDE_P, limit_railing]))
-        
-    def get_i_limits(self):
-        return (0./2.**self.N_DIVIDE_I, (2.**32-1)/2.**self.N_DIVIDE_I)
-        
-    def get_ii_limits(self):
-        return (0./2.**self.N_DIVIDE_II, (2.**32-1)/2**self.N_DIVIDE_II)
-        
-    def get_d_limits(self):
-        # TODO: make sure that this applies to the D branch
-        #limit_railing = 2.**(16+self.N_DIVIDE_D)/2.**self.N_DIVIDE_D
-#        return (1./2.**self.N_DIVIDE_P, 2.**31/2.**self.N_DIVIDE_P)
-        return (0./2.**self.N_DIVIDE_D, (2.**32-1)/2.**self.N_DIVIDE_D, )        
-        
-    def get_df_limits(self):
-        return (0., 1., 2.**self.N_DIVIDE_DF)
-        
-    def get_current_gains(self):
-        return ( self.gain_p, self.gain_i, self.gain_ii )
+    
+    @property
+    def int_p_limits(self):
+        '''Gain P is signed 32 bit integer on the FPGA'''
+        return (1,
+                2**(32-1)-1)
+    
+    @property
+    def int_i_limits(self):
+        '''Gain I is signed 32 bit integer on the FPGA'''
+        return (1,
+                2**(32-1)-1)
+    
+    @property
+    def int_ii_limits(self):
+        '''Gain II is signed 32 bit integer on the FPGA'''
+        return (1,
+                2**(32-1)-1)
+    
+    @property
+    def int_d_limits(self):
+        '''Gain D is signed 32 bit integer on the FPGA'''
+        return (1,
+                2**(32-1)-1)
+    
+    @property
+    def int_df_limits(self):
+        '''Filter Coefficient DF is signed 18 bit integer on the FPGA'''
+        return (1,
+                2**(18-1)-1)
+    
+    @property
+    def p_limits(self):
+        (min_int_p, max_int_p) = self.int_p_limits
+        return (min_int_p/2.**self.N_DIVIDE_P,
+                max_int_p/2.**self.N_DIVIDE_P)
+    
+    @property
+    def i_limits(self):
+        (min_int_i, max_int_i) = self.int_i_limits
+        return (min_int_i/2.**self.N_DIVIDE_I,
+                max_int_i/2.**self.N_DIVIDE_I)
+    
+    @property
+    def ii_limits(self):
+        (min_int_ii, max_int_ii) = self.int_ii_limits
+        return (min_int_ii/2.**self.N_DIVIDE_II,
+                max_int_ii/2**self.N_DIVIDE_II)
+    
+    @property
+    def d_limits(self):
+        (min_int_d, max_int_d) = self.int_d_limits
+        return (min_int_d/2.**self.N_DIVIDE_D,
+                max_int_d/2.**self.N_DIVIDE_D)        
+    
+    @property
+    def df_limits(self):
+        (min_int_df, max_int_df) = self.int_df_limits
+        return (min_int_df/2.**self.N_DIVIDE_DF,
+                max_int_df/2.**self.N_DIVIDE_DF)
         
     def get_current_transfer_function(self, freq_axis, fs):
         
         unit_delay_phase_ramp = 2*np.pi * freq_axis/fs
         H_cumsum = 1/(1-np.exp(1j*unit_delay_phase_ramp))
         
-        afilt = self.coef_d
+        afilt = self.coef_df
         H_filt = afilt/(1-(1-afilt)*np.exp(1j*unit_delay_phase_ramp))
         H_diff = (1-np.exp(1j*unit_delay_phase_ramp))
         
@@ -80,7 +114,7 @@ class Loop_filters_module(object):
         return H_loop_filters
 
         
-    def set_pll_settings(self, sl, gain_p, gain_i, gain_ii, gain_d, coef_d, bLock):
+    def set_pll_settings(self, sl, gain_p, gain_i, gain_ii, gain_d, coef_df, bLock):
         # Register format is:
         # gain_p  (32 bits signed, actual gain is gain_p/ 2**N_DIVIDE_P)
         # gain_i  (32 bits signed, actual gain is gain_i/ 2**N_DIVIDE_I)
@@ -88,48 +122,70 @@ class Loop_filters_module(object):
         # settings register: 1 bit: bLock
         bDebugOutput = False
         
-        if gain_p > max(self.get_p_limits()): #(2**32 - 1)/2.**self.N_DIVIDE_P:
-            if bDebugOutput:
-                print('Error: P Gain clamped.')
-            gain_p = max(self.get_p_limits())
-        if gain_i > max(self.get_i_limits()): #(2**31 - 1)/2.**self.N_DIVIDE_I:
-            if bDebugOutput:
-                print('Error: I Gain clamped.')
-            gain_i = max(self.get_i_limits())
-            
-        if gain_ii > max(self.get_ii_limits()): #(2**31 - 1)/2.**self.N_DIVIDE_II:
-            if bDebugOutput:
-                print('Error: II Gain clamped.:')
-            gain_ii = max(self.get_ii_limits())
-        if gain_d > max(self.get_d_limits()): #(2**31 - 1)/2.**self.N_DIVIDE_D:
-            if bDebugOutput:
-                print('Error: D Gain clamped.')
-            gain_d = max(self.get_d_limits())
-        if coef_d > 1: #(2**18 - 1)/2.**self.N_DIVIDE_DF:
-            if bDebugOutput:
-                print('Error: DF Coef clamped.')
-            coef_d = 1
-            
-        
         gain_p_int = int(round(gain_p*2.**self.N_DIVIDE_P))
         gain_i_int = int(round(gain_i*2.**self.N_DIVIDE_I))
         gain_ii_int = int(round(gain_ii*2.**self.N_DIVIDE_II))
         gain_d_int = int(round(gain_d*2.**self.N_DIVIDE_D))
-        coef_d_int = int(round(coef_d*2.**self.N_DIVIDE_DF))
-
+        coef_df_int = int(round(coef_df*2.**self.N_DIVIDE_DF))
+        
+        if gain_p_int > max(self.int_p_limits):
+            if bDebugOutput:
+                print('P Gain maximized.')
+            gain_p_int = max(self.int_p_limits)
+        elif gain_p_int < min(self.int_p_limits):
+            if bDebugOutput:
+                print('P Gain off.')
+            gain_p_int = 0
+        
+        if gain_i_int > max(self.int_i_limits):
+            if bDebugOutput:
+                print('I Gain maximized.')
+            gain_i_int = max(self.int_i_limits)
+        elif gain_i_int < min(self.int_i_limits):
+            if bDebugOutput:
+                print('I Gain off.')
+            gain_i_int = 0
+        
+        if gain_ii_int > max(self.int_ii_limits):
+            if bDebugOutput:
+                print('II Gain maximized.')
+            gain_ii_int = max(self.int_ii_limits)
+        elif gain_ii_int < min(self.int_ii_limits):
+            if bDebugOutput:
+                print('II Gain off.')
+            gain_ii_int = 0
+        
+        if gain_d_int > max(self.int_d_limits):
+            if bDebugOutput:
+                print('D Gain maximized.')
+            gain_d_int = max(self.int_d_limits)
+        elif gain_d_int < min(self.int_d_limits):
+            if bDebugOutput:
+                print('D Gain off.')
+            gain_d_int = 0
+        
+        if coef_df_int > max(self.int_df_limits):
+            if bDebugOutput:
+                print('DF Coef maximized.')
+            coef_df_int = max(self.int_df_limits)
+        elif coef_df_int < min(self.int_df_limits):
+            if bDebugOutput:
+                print('DF Coef off.')
+            coef_df_int = 0
         
         self.gain_p = gain_p_int/2.**self.N_DIVIDE_P
         self.gain_i = gain_i_int/2.**self.N_DIVIDE_I
         self.gain_ii = gain_ii_int/2.**self.N_DIVIDE_II
         self.gain_d = gain_d_int/2.**self.N_DIVIDE_D
-        self.coef_d = coef_d_int/2.**self.N_DIVIDE_DF
+        self.coef_df = coef_df_int/2.**self.N_DIVIDE_DF
         
         if bDebugOutput:
-            print('P_gain = %e, in integer: P_gain = %d = 2^%.2f' % (self.gain_p, gain_p_int, np.log2(gain_p_int+0.1)))
-            print('I_gain = %e, in integer: I_gain = %d = 2^%.2f' % (self.gain_i, gain_i_int, np.log2(gain_i_int+0.1)))
-            print('II_gain = %e, in integer: II_gain = %d = 2^%.2f' % (self.gain_ii, gain_ii_int, np.log2(gain_ii_int+0.1)))
-            print('D_gain = %e, in integer: D_gain = %d = 2^%.2f' % (self.gain_d, gain_d_int, np.log2(gain_d_int+0.1)))
-            print('DF_gain = %e, in integer: DF_gain = %d = 2^%.2f' % (self.coef_d, coef_d_int, np.log2(coef_d_int+0.1)))
+            print('P_gain = {:.4g}, in integer: P_gain = {:d} = 2^{:.3f}'.format(self.gain_p, gain_p_int, 1+np.log2(gain_p_int)))
+            print('I_gain = {:.4g}, in integer: I_gain = {:d} = 2^{:.3f}'.format(self.gain_i, gain_i_int, 1+np.log2(gain_i_int)))
+            print('II_gain = {:.4g}, in integer: II_gain = {:d} = 2^{:.3f}'.format(self.gain_ii, gain_ii_int, 1+np.log2(gain_ii_int)))
+            print('D_gain = {:.4g}, in integer: D_gain = {:d} = 2^{:.3f}'.format(self.gain_d, gain_d_int, 1+np.log2(gain_d_int)))
+            print('DF_gain = {:.4g}, in integer: DF_gain = {:d} = 2^{:.3f}'.format(self.coef_df, coef_df_int, 1+np.log2(coef_df_int)))
+            print('')
         
         # Send P gain
         int_bits15_to_0 = gain_p_int & 0xFFFF
@@ -154,28 +210,28 @@ class Loop_filters_module(object):
         sl.send_bus_cmd(self.bus_base_address + self.BUS_OFFSET_gain_d, int_bits15_to_0, int_bits31_to_16)
             
         # Send DF gain
-        int_bits15_to_0 = coef_d_int & 0xFFFF
-        int_bits31_to_16 = (coef_d_int & 0xFFFF0000) >> 16
-        sl.send_bus_cmd(self.bus_base_address + self.BUS_OFFSET_coef_d_filt, int_bits15_to_0, int_bits31_to_16)
+        int_bits15_to_0 = coef_df_int & 0xFFFF
+        int_bits31_to_16 = (coef_df_int & 0xFFFF0000) >> 16
+        sl.send_bus_cmd(self.bus_base_address + self.BUS_OFFSET_coef_df, int_bits15_to_0, int_bits31_to_16)
         
         # Send lock/unlock setting
         sl.send_bus_cmd(self.bus_base_address + self.BUS_OFFSET_settings, bLock, 0)
 
     def get_pll_settings(self, sl):
-        gain_p_raw  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_p)
-        gain_i_raw  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_i)
-        gain_ii_raw = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_ii)
-        gain_d_raw  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_d)
-        coef_d_raw  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_coef_d_filt)
+        gain_p_int  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_p)
+        gain_i_int  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_i)
+        gain_ii_int = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_ii)
+        gain_d_int  = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_gain_d)
+        coef_df_int = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_coef_df)
         bLock       = sl.read_RAM_dpll_wrapper(self.bus_base_address + self.BUS_OFFSET_settings)
 
-        self.gain_p  = gain_p_raw/2.**self.N_DIVIDE_P
-        self.gain_i  = gain_i_raw/2.**self.N_DIVIDE_I
-        self.gain_ii = gain_ii_raw/2.**self.N_DIVIDE_II
-        self.gain_d  = gain_d_raw/2.**self.N_DIVIDE_D
-        self.coef_d  = coef_d_raw/2.**self.N_DIVIDE_DF
+        self.gain_p  = gain_p_int/2.**self.N_DIVIDE_P
+        self.gain_i  = gain_i_int/2.**self.N_DIVIDE_I
+        self.gain_ii = gain_ii_int/2.**self.N_DIVIDE_II
+        self.gain_d  = gain_d_int/2.**self.N_DIVIDE_D
+        self.coef_df = coef_df_int/2.**self.N_DIVIDE_DF
         self.bLock   = bLock
-        return (self.gain_p,  self.gain_i, self.gain_ii, self.gain_d, self.coef_d, self.bLock)
+        return (self.gain_p,  self.gain_i, self.gain_ii, self.gain_d, self.coef_df, self.bLock)
 
 
 class PLL0_module(Loop_filters_module):
