@@ -38,24 +38,24 @@ use IEEE.NUMERIC_STD.ALL;
         rst                 : in  std_logic;
         clk                 : in  std_logic;
         clk_times_N         : in  std_logic;
-        data_input          : in  std_logic_vector (INPUT_DATA_WIDTH-1 downto 0);
+        data_input          : in  signed(INPUT_DATA_WIDTH-1 downto 0);
 
         -- Configuration port
-        reference_frequency : in  std_logic_vector (47 downto 0);
-        boxcar_filter_size  : in  std_logic_vector (11 downto 0);
-        ddc_filter_select   : in  std_logic_vector (1 downto 0);    -- 0 means wideband (25 MHz) filter, 1 means narrowband (6 MHz), 2 means 16-taps minimum-phase fir
+        reference_frequency : in  signed(48-1 downto 0);
+        boxcar_filter_size  : in  std_logic_vector(12-1 downto 0);
+        ddc_filter_select   : in  std_logic_vector(2-1 downto 0);    -- 0 means wideband (25 MHz) filter, 1 means narrowband (6 MHz), 2 means 16-taps minimum-phase fir
 
         -- Reference tone output, goes to the ddr2 logger:
-        ref_cosine_out      : out std_logic_vector (16-1 downto 0);
-        ref_sine_out        : out std_logic_vector (16-1 downto 0);
+        ref_cosine_out      : out signed(16-1 downto 0);
+        ref_sine_out        : out signed(16-1 downto 0);
 
         -- Binary lock state: used to null the phase error to 0 instead of an arbitrary offset:
         lock                : in  std_logic;
-        angleSelect         : in  std_logic_vector (3 downto 0);
+        angleSelect         : in  std_logic_vector(3 downto 0);
 
-        amplitude           : out std_logic_vector (WRAPPED_PHASE_WIDTH+2-1 downto 0);
-        wrapped_phase       : out std_logic_vector (WRAPPED_PHASE_WIDTH-1 downto 0);
-        inst_frequency      : out std_logic_vector (WRAPPED_PHASE_WIDTH-1 downto 0)
+        amplitude           : out signed((WRAPPED_PHASE_WIDTH+2)-1 downto 0);
+        wrapped_phase       : out signed(WRAPPED_PHASE_WIDTH-1 downto 0);
+        inst_frequency      : out signed(WRAPPED_PHASE_WIDTH-1 downto 0)
     );
     end entity;
 
@@ -68,33 +68,33 @@ architecture Behavioral of DDC_wideband_filters is
         port (
         aclk : IN STD_LOGIC;
         s_axis_phase_tvalid : IN STD_LOGIC;
-        s_axis_phase_tdata : IN STD_LOGIC_VECTOR(47 DOWNTO 0);  -- phase increments
+        s_axis_phase_tdata : IN STD_LOGIC_VECTOR(48-1 DOWNTO 0);  -- phase increments
         m_axis_data_tvalid : OUT STD_LOGIC;
-        m_axis_data_tdata : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);  -- cos and sine (16 bits signed each)
+        m_axis_data_tdata : OUT STD_LOGIC_VECTOR(32-1 DOWNTO 0);  -- cos and sine (16 bits signed each)
         m_axis_phase_tvalid : OUT STD_LOGIC;
-        m_axis_phase_tdata : OUT STD_LOGIC_VECTOR(47 DOWNTO 0)  -- output phase, not used in this module
+        m_axis_phase_tdata : OUT STD_LOGIC_VECTOR(48-1 DOWNTO 0)  -- output phase, not used in this module
         );
     end component;
-    signal lo_dds_m_axis_data_tdata : STD_LOGIC_VECTOR(31 DOWNTO 0);
+    signal lo_dds_m_axis_data_tdata : STD_LOGIC_VECTOR(32-1 DOWNTO 0);
+    
     --Computes input*cos and input*sin
     COMPONENT input_multiplier
       PORT (
          clk : IN STD_LOGIC;
-         a : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
-         b : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
-         p : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+         a : IN signed(16-1 DOWNTO 0);
+         b : IN signed(16-1 DOWNTO 0);
+         p : OUT signed(32-1 DOWNTO 0)
       );
     END COMPONENT;
-
     
     -- The core which computes the angle and the amplitude of the IQ signal
     COMPONENT angle_CORDIC
     PORT (
         aclk : IN STD_LOGIC;
         s_axis_cartesian_tvalid : IN STD_LOGIC;
-        s_axis_cartesian_tdata : IN STD_LOGIC_VECTOR(31 DOWNTO 0);    -- y_in, x_in, 16 bits each
+        s_axis_cartesian_tdata : IN std_logic_vector(31 DOWNTO 0);    -- y_in, x_in, 16 bits each
         m_axis_dout_tvalid : OUT STD_LOGIC;
-        m_axis_dout_tdata : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)       -- amplitude, phase, 12 bits each, sign-extended to 16
+        m_axis_dout_tdata : OUT std_logic_vector(31 DOWNTO 0)       -- amplitude, phase, 12 bits each, sign-extended to 16
         
     );
     END COMPONENT;
@@ -103,38 +103,38 @@ architecture Behavioral of DDC_wideband_filters is
 
     -- Internal signals:
     -----------------------------------------------------------------------
-    signal DDS_cosine_tmp : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
-    signal DDS_sine_tmp   : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
-    signal DDS_cosine : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
-    signal DDS_sine   : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
+    signal DDS_cosine_tmp   : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal DDS_sine_tmp     : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal DDS_cosine       : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal DDS_sine         : signed(INPUT_DATA_WIDTH-1 downto 0);
     
     -- High-pass filter signals:
-    signal data_input_to_mult : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
-    signal data_input_highpassed : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
+    signal data_input_to_mult       : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal data_input_highpassed    : signed(INPUT_DATA_WIDTH-1 downto 0);
 
     -- Multipliers output signals 
-    constant BIT_SHIFT_AFTER_MULT : positive := 15;    -- Divides the output of the filter by 2^BIT_SHIFT_AFTER_FILTER to keep gain approximately equal to 1.  Note that the filter has a DC gain equal to its length, while the product by cos has a gain of 1/2, so this value should be approx= log2(boxcar_filter_size/2)
-    signal input_times_cos_wide    : std_logic_vector(32-1 downto 0) := (others => '0');
-    signal input_times_sin_wide    : std_logic_vector(32-1 downto 0) := (others => '0');
-    signal input_times_cos    : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
-    signal input_times_sin    : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
+    constant BIT_SHIFT_AFTER_MULT   : positive := 15;    -- Divides the output of the filter by 2^BIT_SHIFT_AFTER_FILTER to keep gain approximately equal to 1.  Note that the filter has a DC gain equal to its length, while the product by cos has a gain of 1/2, so this value should be approx= log2(boxcar_filter_size/2)
+    signal input_times_cos_wide     : signed(32-1 downto 0) := (others => '0');
+    signal input_times_sin_wide     : signed(32-1 downto 0) := (others => '0');
+    signal input_times_cos          : signed(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
+    signal input_times_sin          : signed(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
     
     -- Filters signals
     constant BIT_SHIFT_AFTER_FILTER : positive := 4;    -- Divides the output of the filter by 2^BIT_SHIFT_AFTER_FILTER to keep gain approximately equal to 1.  Note that the filter has a DC gain equal to its length, while the product by cos has a gain of 1/2, so this value should be approx= log2(boxcar_filter_size/2)
     --signal boxcar_filter_size    : std_logic_vector(11 downto 0) := std_logic_vector(to_unsigned(20, 12));
-    signal I_filtered_wide    : std_logic_vector(INPUT_DATA_WIDTH+1-1+5 downto 0);
-    signal Q_filtered_wide    : std_logic_vector(INPUT_DATA_WIDTH+1-1+5 downto 0);
-    signal I_filtered            : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
-    signal Q_filtered            : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0);
+    signal I_filtered_wide      : signed((INPUT_DATA_WIDTH+1+5)-1 downto 0);
+    signal Q_filtered_wide      : signed((INPUT_DATA_WIDTH+1+5)-1 downto 0);
+    signal I_filtered           : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal Q_filtered           : signed(INPUT_DATA_WIDTH-1 downto 0);
     
     -- Phase unwrapping signals
-    signal wrapped_phase_cordic            : std_logic_vector(WRAPPED_PHASE_WIDTH+2-1 downto 0);
-    signal wrapped_phase_cordic2            : std_logic_vector(WRAPPED_PHASE_WIDTH+2-1 downto 0);
-    signal wrapped_phase_internal            : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    signal wrapped_phase_internal_last    : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    signal wrapped_phase_internal_last2    : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    signal phase_offset, inst_freq_adjust                        : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    signal inst_freq_internal                 : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal wrapped_phase_cordic             : signed((WRAPPED_PHASE_WIDTH+2)-1 downto 0);
+    signal wrapped_phase_cordic2            : signed((WRAPPED_PHASE_WIDTH+2)-1 downto 0);
+    signal wrapped_phase_internal           : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal wrapped_phase_internal_last      : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal wrapped_phase_internal_last2     : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal phase_offset, inst_freq_adjust   : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal inst_freq_internal               : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
     
     signal lock_last : std_logic := '0';
 --    signal unwrapped_phase_internal        : std_logic_vector(UNWRAPPED_PHASE_WIDTH-1 downto 0);
@@ -144,17 +144,17 @@ architecture Behavioral of DDC_wideband_filters is
     attribute KEEP of Q_filtered : signal is "TRUE";
     
     
-    signal Q_quantized : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    signal Q_limited_wide : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
-    signal Q_limited : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    constant Q_limit_min : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := std_logic_vector(to_signed(-2**(WRAPPED_PHASE_WIDTH-1),  INPUT_DATA_WIDTH));
-    constant Q_limit_max : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := std_logic_vector(to_signed(2**(WRAPPED_PHASE_WIDTH-1)-1, INPUT_DATA_WIDTH));
+    signal Q_quantized      : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal Q_limited_wide   : signed(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
+    signal Q_limited        : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    constant Q_limit_min    : signed(INPUT_DATA_WIDTH-1 downto 0) := to_signed(-2**(WRAPPED_PHASE_WIDTH-1),  INPUT_DATA_WIDTH);
+    constant Q_limit_max    : signed(INPUT_DATA_WIDTH-1 downto 0) := to_signed(2**(WRAPPED_PHASE_WIDTH-1)-1, INPUT_DATA_WIDTH);
     
-    signal I_quantized : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    signal I_limited_wide : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
-    signal I_limited : std_logic_vector(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
-    constant I_limit_min : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := std_logic_vector(to_signed(-2**(WRAPPED_PHASE_WIDTH-1),  INPUT_DATA_WIDTH));
-    constant I_limit_max : std_logic_vector(INPUT_DATA_WIDTH-1 downto 0) := std_logic_vector(to_signed(2**(WRAPPED_PHASE_WIDTH-1)-1, INPUT_DATA_WIDTH));
+    signal I_quantized      : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    signal I_limited_wide   : signed(INPUT_DATA_WIDTH-1 downto 0) := (others => '0');
+    signal I_limited        : signed(WRAPPED_PHASE_WIDTH-1 downto 0) := (others => '0');
+    constant I_limit_min    : signed(INPUT_DATA_WIDTH-1 downto 0) := to_signed(-2**(WRAPPED_PHASE_WIDTH-1),  INPUT_DATA_WIDTH);
+    constant I_limit_max    : signed(INPUT_DATA_WIDTH-1 downto 0) := to_signed(2**(WRAPPED_PHASE_WIDTH-1)-1, INPUT_DATA_WIDTH);
     
 --    attribute KEEP of wrapped_phase_cordic2 : signal is "TRUE";
 
@@ -166,22 +166,22 @@ begin
     
         aclk                    => clk,
         s_axis_phase_tvalid     => '1',
-        s_axis_phase_tdata      => reference_frequency,
+        s_axis_phase_tdata      => std_logic_vector(reference_frequency),
         m_axis_data_tvalid      => open,
         m_axis_data_tdata       => lo_dds_m_axis_data_tdata,
         m_axis_phase_tvalid     => open,
         m_axis_phase_tdata      => open
     );
-    DDS_cosine_tmp  <= lo_dds_m_axis_data_tdata(15 downto 0);
-    DDS_sine_tmp    <= lo_dds_m_axis_data_tdata(31 downto 16);
+    DDS_cosine_tmp  <= signed(lo_dds_m_axis_data_tdata(16-1 downto 0));
+    DDS_sine_tmp    <= signed(lo_dds_m_axis_data_tdata(32-1 downto 16));
     
     -- this is to replace the reference exponential by just a real constant to change the behavior to a baseband lock
     -- added by Hugo
     process (reference_frequency, DDS_cosine_tmp, DDS_sine_tmp) is
     begin
-        if reference_frequency = std_logic_vector(to_signed(0, reference_frequency'length)) then
-            DDS_cosine <= std_logic_vector(to_signed(2**(INPUT_DATA_WIDTH-1)-1, INPUT_DATA_WIDTH));
-            DDS_sine   <= std_logic_vector(to_signed(0                        , INPUT_DATA_WIDTH));
+        if reference_frequency = to_signed(0, reference_frequency'length) then
+            DDS_cosine <= to_signed(2**(INPUT_DATA_WIDTH-1)-1, INPUT_DATA_WIDTH);
+            DDS_sine   <= to_signed(0                        , INPUT_DATA_WIDTH);
         else
             DDS_cosine <= DDS_cosine_tmp;
             DDS_sine   <= DDS_sine_tmp;
@@ -201,7 +201,7 @@ begin
     
     process (reference_frequency, data_input_highpassed, data_input) is
     begin
-        if reference_frequency = std_logic_vector(to_signed(0, reference_frequency'length)) then
+        if reference_frequency = to_signed(0, reference_frequency'length) then
             data_input_to_mult <= data_input;
         else
             data_input_to_mult <= data_input_highpassed;
@@ -231,13 +231,13 @@ begin
     process (clk)
     begin
         if rising_edge(clk) then
-            input_times_cos <= std_logic_vector(resize(shift_right(
-                                        signed(input_times_cos_wide) + to_signed(2**(BIT_SHIFT_AFTER_MULT-1), input_times_cos_wide'length)
-                                        , BIT_SHIFT_AFTER_MULT), input_times_cos'length));
+            input_times_cos <= resize(shift_right(
+                                      input_times_cos_wide + to_signed(2**(BIT_SHIFT_AFTER_MULT-1), input_times_cos_wide'length)
+                                      , BIT_SHIFT_AFTER_MULT), input_times_cos'length);
 
-            input_times_sin <= std_logic_vector(resize(shift_right(
-                                        signed(input_times_sin_wide) + to_signed(2**(BIT_SHIFT_AFTER_MULT-1), input_times_cos_wide'length)
-                                        , BIT_SHIFT_AFTER_MULT), input_times_cos'length));
+            input_times_sin <= resize(shift_right(
+                                      input_times_sin_wide + to_signed(2**(BIT_SHIFT_AFTER_MULT-1), input_times_cos_wide'length)
+                                      , BIT_SHIFT_AFTER_MULT), input_times_cos'length);
         end if;
     end process;
             
@@ -283,9 +283,9 @@ begin
         m_axis_dout_tvalid => open,
         m_axis_dout_tdata => cordic_m_axis_dout_tdata       -- amplitude, phase, 12 bits each, sign-extended to 16
     );
-    s_axis_cartesian_tdata <= (Q_filtered & I_filtered);
-    wrapped_phase_cordic    <= cordic_m_axis_dout_tdata(27 downto 16);
-    amplitude               <= cordic_m_axis_dout_tdata(11 downto 0);
+    s_axis_cartesian_tdata <= std_logic_vector(Q_filtered & I_filtered);
+    wrapped_phase_cordic    <= signed(cordic_m_axis_dout_tdata(27 downto 16));
+    amplitude               <= signed(cordic_m_axis_dout_tdata(11 downto 0));
       
     -- The CORDIC always outputs two useless bits in the phase vector (see datasheet)
     with angleSelect select
@@ -354,7 +354,7 @@ begin
             else
                 wrapped_phase_internal_last <= wrapped_phase_internal;    -- one sample delay
                 wrapped_phase_internal_last2 <= wrapped_phase_internal_last;
-                inst_freq_internal <= std_logic_vector(signed(wrapped_phase_internal) - signed(wrapped_phase_internal_last) + inst_freq_adjust);
+                inst_freq_internal <= wrapped_phase_internal - wrapped_phase_internal_last + inst_freq_adjust;
                 
                 -- this is to ensure lock at 0 phase error, instead of at some arbitrary offset
                 lock_last <= lock;

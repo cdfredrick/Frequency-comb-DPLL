@@ -39,34 +39,40 @@ entity integrator_with_saturation is
 		N_OUTPUT : integer := 16
 		
 	);
-    Port ( clk : in  STD_LOGIC;
-           sclr : in  STD_LOGIC;
-           railed_positive : in  STD_LOGIC;
-           railed_negative : in  STD_LOGIC;
-           data_in : in  STD_LOGIC_VECTOR (N_INPUT-1 downto 0);
-           data_out : out  STD_LOGIC_VECTOR (N_OUTPUT-1 downto 0);
-			  railed_positive_out : out std_logic;
-			  railed_negative_out : out std_logic
-			  
-			  );
+    Port (
+        clk : in  STD_LOGIC;
+        sclr : in  STD_LOGIC;
+        railed_positive : in  STD_LOGIC;
+        railed_negative : in  STD_LOGIC;
+        data_in : in  signed(N_INPUT-1 downto 0);
+        data_out : out  signed(N_OUTPUT-1 downto 0);
+        railed_positive_out : out std_logic;
+        railed_negative_out : out std_logic
+    );
 end integrator_with_saturation;
 
 architecture Behavioral of integrator_with_saturation is
-
-	constant N_BITS_RESULT : integer := MAX_local(data_in'length, N_OUTPUT)+1;	-- the extra bit is to hold the full, unwrapped result
+    -- Internal variables
+	-----------------------------------------------------------------------
+	constant N_BITS_TEMP : integer := MAX_local(data_in'length, N_OUTPUT)+1;	-- the extra bit is to hold the full, unwrapped result
 	signal accumulator : signed(N_OUTPUT-1 downto 0) := (others => '0');
 	
-	constant ACCUM_MAX : signed(N_BITS_RESULT-1 downto 0) := shift_left(to_signed(1, N_BITS_RESULT), N_OUTPUT-1)-1;	-- (2^(N_OUTPUT-1)-1)
-	constant ACCUM_MIN : signed(N_BITS_RESULT-1 downto 0) := shift_left(to_signed(-1, N_BITS_RESULT), N_OUTPUT-1);	-- (-2**(N_OUTPUT-1))
+	constant ACCUM_MAX : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(1, N_BITS_TEMP), N_OUTPUT-1)-1;	   -- (2^(N_OUTPUT-1)-1)
+	constant ACCUM_MIN : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(-1, N_BITS_TEMP), N_OUTPUT-1)+1;   -- (-2**(N_OUTPUT-1)+1), avoid the "most negative number"
 
 	-- for debug only:
-	signal temp_sum_signal : signed(N_BITS_RESULT-1 downto 0) := (others => '0');
+	-- signal temp_sum_signal : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
 
 begin
+    -- Integrator with saturation, anti-windup, and synchronous clear
+	----------------------------------------------------------------
+	-- ***describe***
+	--
+	-- data_out = saturate(cumsum(data_in))
+	-- 1 total clock cycle of delay
 
-	-- Integrator with saturation
 	process (clk)
-		variable temp_sum : signed(N_BITS_RESULT-1 downto 0) := (others => '0');
+		variable temp_sum : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
 	begin
 		if rising_edge(clk) then
 			-- We have three posibilities:
@@ -80,18 +86,18 @@ begin
 				railed_negative_out <= '0';
 			else
 			
-				-- Compute the full, unwrapped result (hence the extra bit compared to the biggest operand - see definition of N_BITS_RESULT)				
-				temp_sum := resize(accumulator, N_BITS_RESULT) + resize(signed(data_in), N_BITS_RESULT);
+				-- Compute the full, unwrapped result (hence the extra bit compared to the biggest operand - see definition of N_BITS_TEMP)				
+				temp_sum := resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
 				
 				-- Only assign the result if it won't cause overflow,
 				-- and we also don't integrate if the signal chain is railed further downstream (anti-windup behavior)
-				if temp_sum > ACCUM_MAX or (railed_positive = '1' and signed(data_in)>0) then
+				if temp_sum > ACCUM_MAX or (railed_positive = '1' and data_in>0) then
 					-- hold value
 					accumulator <= accumulator;
 					railed_positive_out <= '1';
 					railed_negative_out <= '0';
 					
-				elsif temp_sum < ACCUM_MIN or (railed_negative = '1' and signed(data_in)<0) then
+				elsif temp_sum < ACCUM_MIN or (railed_negative = '1' and data_in<0) then
 					-- hold value
 					accumulator <= accumulator;
 					railed_positive_out <= '0';
@@ -108,10 +114,10 @@ begin
 		end if;
 	end process;
 	-- assign output:
-	data_out <= std_logic_vector(accumulator);
+	data_out <= accumulator;
 	
 	-- Only for debug:
-	temp_sum_signal <= resize(accumulator, N_BITS_RESULT) + resize(signed(data_in), N_BITS_RESULT);	-- only for debug
+	-- temp_sum_signal <= resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);	-- only for debug
 
 
 end Behavioral;

@@ -6,15 +6,15 @@
 module dpll_wrapper(
 
     
-    input  wire               clk1,         // global clock, designed for 100 MHz clock rate
+    input  wire               clk1,         // global clock, 125 MHz
     input  wire               clk1_timesN,  // this should be N times the clock, phase-locked to clk1, N matching what was input in the FIR compiler for fir_compiler_minimumphase_N_times_clk
     input  wire               rst,
 
     // analog data input/output interface
-    input  wire signed [15:0] ADCraw0,
-    input  wire signed [15:0] ADCraw1,
-    output wire signed [15:0] DACout0,
-    output wire signed [15:0] DACout1,
+    input  wire signed [16-1:0] ADCraw0,
+    input  wire signed [16-1:0] ADCraw1,
+    output wire signed [16-1:0] DACout0,
+    output wire signed [16-1:0] DACout1,
 
     // Data logger port:
     output wire [16-1:0]      LoggerData,
@@ -32,6 +32,7 @@ module dpll_wrapper(
     output wire               sys_ack       // bus acknowledge signal
 
 );
+
 
 // Parameters
 localparam SIGNAL_SIZE = 16;
@@ -96,15 +97,15 @@ parallel_bus_register_phase_ok_reset_frontend (
 
 ///////////////////////////////////////////////////////////////////////////////
 // Wires for the configuration bus
-wire [15:0]          cmd_addr;
-wire [15:0]          cmd_data1in, cmd_data2in;
+wire [16-1:0]        cmd_addr;
+wire [16-1:0]        cmd_data1in, cmd_data2in;
 wire                 cmd_trig;
 
 // conversion from Zynq-style parallel bus to the legacy Opal-Kelly-style bus:
 assign cmd_trig    = sys_wen;
-assign cmd_addr    = sys_addr [16-1+2:2];   // note that we divide the Zynq addresses by 4 when mapping to the DPLL addresses.  This is because the Zynq cannot address memory locations that are not on 32-bits boundaries, but the legacy bus didn't have this restriction.
-assign cmd_data1in = sys_wdata[16-1  :0];
-assign cmd_data2in = sys_wdata[32-1  :16];
+assign cmd_addr    = sys_addr [(16+2)-1:2];   // note that we divide the Zynq addresses by 4 when mapping to the DPLL addresses.  This is because the Zynq cannot address memory locations that are not on 32-bits boundaries, but the legacy bus didn't have this restriction.
+assign cmd_data1in = sys_wdata[16-1:0];
+assign cmd_data2in = sys_wdata[32-1:16];
 
 
 
@@ -178,7 +179,7 @@ assign LED_G0 = 1'b1;
 
 
 Status_LED_driver # (
-    .N_BITS_COUNTER(23) // 100 MHz/2**23 = 12 Hz
+    .N_BITS_COUNTER(23) // 125 MHz/2**23 = 14.9 Hz
 ) Status_LED_driver0 (
     .clk(clk1), 
     .lock_on(pll0_lock), 
@@ -189,7 +190,7 @@ Status_LED_driver # (
     );
      
 Status_LED_driver # (
-    .N_BITS_COUNTER(23) // 100 MHz/2**23 = 12 Hz
+    .N_BITS_COUNTER(23) // 125 MHz/2**23 = 14.9 Hz
 ) Status_LED_driver1 (
     .clk(clk1), 
     .lock_on(pll1_lock), 
@@ -202,8 +203,8 @@ Status_LED_driver # (
 
 // This module outputs high if the abs value of the phase residuals is above a certain threshold
 // the output of this module triggers the crash monitor
-wire [31:0] phase_residuals0, phase_residuals0_threshold;
-wire [9:0] freq_residuals0, freq_residuals0_threshold;
+wire signed [32-1:0] phase_residuals0, phase_residuals0_threshold;
+wire [10-1:0] freq_residuals0_threshold;
 wire residuals0_are_above_threshold_phase, residuals0_are_above_threshold_freq;
 reg residuals0_are_above_threshold;
 
@@ -260,7 +261,7 @@ residuals_monitor_inst0_freq (
 // The two trigger conditions are ORed together:
 always @(posedge clk1) residuals0_are_above_threshold <= residuals0_are_above_threshold_phase | residuals0_are_above_threshold_freq;
  
-wire [31:0] phase_residuals1, phase_residuals1_threshold;
+wire signed [32-1:0] phase_residuals1, phase_residuals1_threshold;
 wire residuals1_are_above_threshold;
      
 // sets the phase residuals threshold for DAC1:
@@ -301,8 +302,8 @@ wire ok_reset_frontend;
 reg rst_peripherals, rst_peripherals_output1, rst_peripherals_output2, rst_peripherals_internal, rst_peripherals_output1_internal, rst_peripherals_output2_internal;    // we split the reset signal in a tree to try help with the fanout, and hope that xst won't combine our register
 reg rst_frontend0, rst_frontend1, rst_frontend0_internal, rst_frontend1_internal;
 
-reg [15:0] reset_counter = 16'b1111111111111111;    // 2**16 cycles * 10 ns/cycle = 655 us of maximum reset time
-reg [15:0] reset_counter_frontend = 16'b1111111111111111;   // 2**16 cycles * 10 ns/cycle = 655 us of maximum reset time
+reg [16-1:0] reset_counter = 16'b1111111111111111;    // 2**16 cycles * 8 ns/cycle = 524 us of maximum reset time
+reg [16-1:0] reset_counter_frontend = 16'b1111111111111111;   // 2**16 cycles * 8 ns/cycle = 524 us of maximum reset time
 
 
 //assign DOUT[2] = rst_frontend0;
@@ -356,10 +357,10 @@ end
 ///////////////////////////////////////////////////////////////////////////////
 // Multiplexer which selects the desired input for the Data logger (formerly DDR2 logger)
 ///////////////////////////////////////////////////////////////////////////////
-wire    [15:0]         selector;
+wire    [16-1:0]         selector;
 
 // counter connected to a free input on the multiplexer, helps for debugging
-reg     [31:0]  debugging_counter;
+reg     [32-1:0]  debugging_counter;
 always @(posedge clk1) debugging_counter <= debugging_counter + 1'b1;
 
 
@@ -380,7 +381,7 @@ multiplexer_NbitsxMsignals_to_Nbits
     .in7({1'b1, DACout1[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
     .in8({1'b1, 16'b0}),
     //.in9({crash_monitor_output_to_logger_clk_enable, crash_monitor_output_to_logger}),
-    .in9({0'b0, 8'b0}),
+    .in9({1'b0, 8'b0}),
     .selector(selector[4:0]), 
     .selected_output({LoggerData_clk_enable, LoggerData})
     );
@@ -407,8 +408,8 @@ multiplexer_NbitsxMsignals_to_Nbits
 // it also adds a 16-bits magic word to help diagnose bus sync issues
 // Collection of wires used to add auxilary data to the stream going to the Data logguer.
 // Currently all we do is add one sample of the DDC reference tone near the start of the data packet when the ADC is selected.
-wire [15:0]         ref_cosine_0, ref_sine_0, ref_cosine_1, ref_sine_1;
-wire [15:0]         ADC0_multiplexed, ADC1_multiplexed;
+wire signed [16-1:0]    ref_cosine_0, ref_sine_0, ref_cosine_1, ref_sine_1;
+wire signed [16-1:0]    ADC0_multiplexed, ADC1_multiplexed;
 aux_data_mux aux_data_mux_inst (
     .clk(clk1), 
     .write_mode(LoggerIsWriting), 
@@ -467,55 +468,55 @@ aux_data_mux aux_data_mux_inst (
 ///////////////////////////////////////////////////////////////////////////////
 // Direct-digital converter (brings a signal to baseband, low-pass filters it, and outputs the phase and frequency) for ADC 0
 ///////////////////////////////////////////////////////////////////////////////
-wire        [11:0]  boxcar_filter_size = 12'd20;    // Filter with a notch at 5 MHz: 100MHz/5MHz = 20 samples
-wire        [47:0]  reference_frequency0;// = 48'b110011001100 11001100110011001100110011001100;    // 5 MHz reference frequency, should be move to a configurable value from the PC eventually
-wire        [9:0]       wrapped_phase0;     // phi/(2*pi) * 2**10
-wire        [9:0]       inst_frequency0;        // diff(phi)/(2*pi) * 2**10
-wire [10-1+12:0]    inst_frequency0_filtered;       // this is the output of a boxcar filter on the inst_frequency signal, before sending to the DDR2 logger
-wire [10-1+2:0] inst_frequency0_filtered_small; // overall filter gain is only equal to its length (4) so we don't really need all the bits
-wire [1:0] ddc0_filter_select, ddc1_filter_select;
+wire        [12-1:0]    boxcar_filter_size = 12'd20;    // Filter with a notch at 5 MHz: 125MHz/5MHz = 25 samples
+wire signed [48-1:0]    reference_frequency0;
+wire signed [10-1:0]    wrapped_phase0; // phi/(2*pi) * 2**10
+wire signed [10-1:0]    inst_frequency0;    // diff(phi)/(2*pi) * 2**10
+wire signed [(10+12)-1:0]   inst_frequency0_filtered;   // this is the output of a boxcar filter on the inst_frequency signal, before sending to the DDR2 logger
+wire signed [(10+2)-1:0]    inst_frequency0_filtered_small; // overall filter gain is only equal to its length (4) so we don't really need all the bits
+wire [2-1:0]    ddc0_filter_select, ddc1_filter_select;
 wire select_phase_or_freq0, select_phase_or_freq1;
-wire [3:0] angleSelect_0, angleSelect_1;
+wire [4-1:0]    angleSelect_0, angleSelect_1;
 
-   parallel_bus_register_64_bits_or_less # (
-        .REGISTER_SIZE(48),
-        .ADDRESS(16'h8000)
-    ) parallel_bus_register_64_bits_or_less_freq0 (
-         .clk(clk1), 
-         .bus_strobe(cmd_trig), 
-         .bus_address(cmd_addr), 
-         .bus_data({cmd_data2in, cmd_data1in}), 
-         .register_output(reference_frequency0), 
-         .update_flag()
-    );
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(48),
+    .ADDRESS(16'h8000)
+) parallel_bus_register_64_bits_or_less_freq0 (
+     .clk(clk1), 
+     .bus_strobe(cmd_trig), 
+     .bus_address(cmd_addr), 
+     .bus_data({cmd_data2in, cmd_data1in}), 
+     .register_output(reference_frequency0), 
+     .update_flag()
+);
     
-   parallel_bus_register_32bits_or_less # (
-        .REGISTER_SIZE(8),
-        .REGISTER_DEFAULT_VALUE(8'b0),
-        .ADDRESS(16'h8004)
-    ) parallel_bus_register_64_bits_or_less_angleSelect (
-         .clk(clk1), 
-         .bus_strobe(cmd_trig), 
-         .bus_address(cmd_addr), 
-         .bus_data({cmd_data2in, cmd_data1in}), 
-         .register_output({angleSelect_1,angleSelect_0}), 
-         .update_flag()
-    );
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(8),
+    .REGISTER_DEFAULT_VALUE(8'b0),
+    .ADDRESS(16'h8004)
+) parallel_bus_register_64_bits_or_less_angleSelect (
+     .clk(clk1), 
+     .bus_strobe(cmd_trig), 
+     .bus_address(cmd_addr), 
+     .bus_data({cmd_data2in, cmd_data1in}), 
+     .register_output({angleSelect_1,angleSelect_0}), 
+     .update_flag()
+);
     
 
-    parallel_bus_register_32bits_or_less # (
-        .REGISTER_SIZE(6),
-        .REGISTER_DEFAULT_VALUE(32'b0),
-        .ADDRESS(16'h8002)
-    )
-    parallel_bus_register_ddc_filter_select (
-         .clk(clk1), 
-         .bus_strobe(cmd_trig), 
-         .bus_address(cmd_addr), 
-         .bus_data({cmd_data2in, cmd_data1in}), 
-         .register_output({select_phase_or_freq1, select_phase_or_freq0, ddc1_filter_select, ddc0_filter_select}), 
-         .update_flag()
-         );
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(6),
+    .REGISTER_DEFAULT_VALUE(32'b0),
+    .ADDRESS(16'h8002)
+)
+parallel_bus_register_ddc_filter_select (
+     .clk(clk1), 
+     .bus_strobe(cmd_trig), 
+     .bus_address(cmd_addr), 
+     .bus_data({cmd_data2in, cmd_data1in}), 
+     .register_output({select_phase_or_freq1, select_phase_or_freq0, ddc1_filter_select, ddc0_filter_select}), 
+     .update_flag()
+     );
      
 // The actual DDC:
 DDC_wideband_filters DDC0_inst (
@@ -524,11 +525,11 @@ DDC_wideband_filters DDC0_inst (
     .clk_times_N(clk1_timesN),
     .data_input(ADCraw0),     // 
      
-     // Configuration
-     .boxcar_filter_size(boxcar_filter_size),
+    // Configuration
+    .boxcar_filter_size(boxcar_filter_size),
     .reference_frequency(reference_frequency0), 
-     .ddc_filter_select(ddc0_filter_select),
-     
+    .ddc_filter_select(ddc0_filter_select),
+    
     // Reference tone output:
     .ref_cosine_out(ref_cosine_0),
     .ref_sine_out(ref_sine_0),
@@ -545,10 +546,10 @@ DDC_wideband_filters DDC0_inst (
      
 ///////////////////////////////////////////////////////////////////////////////
 // Counts the frequency with no dead-time using a short bandlimiting filter  + an integrate and dump.
-// Output rate will be fs/2^LOG2_N_CYCLES_INTEGRATION ~ 100e6/8e6 ~ 12.5 Hz
+// Output rate will be 1 Hz
 // Results are sent to a FIFO which goes to an Opal Kelly PipeOut
 ///////////////////////////////////////////////////////////////////////////////
-wire [64-1:0] counter0_out;
+wire signed [64-1:0] counter0_out;
 wire counter0_out_clk_enable, counter0_out_clk_enable_faster;
 wire triangular_mode;   // triangular_mode='1' means a triangular averaging of the frequency, triangular_mode='0' means rectangular averaging of the frequency
 
@@ -626,29 +627,25 @@ parallel_bus_register_counter_mode (
 ///////////////////////////////////////////////////////////////////////////////
 // Direct-digital converter (brings a signal to baseband, low-pass filters it, and outputs the phase and frequency) for ADC 1
 ///////////////////////////////////////////////////////////////////////////////
-//wire      [11:0]  boxcar_filter_size = 12'd20;    // Filter with a notch at 5 MHz: 100MHz/5MHz = 20 samples
-wire       [47:0]  reference_frequency1, nominal_reference_frequency1, new_reference_frequency1;
-wire     [80-1:0]  dfr_phase_modulus, dfr_phase_adjust, delta_fr;
-wire               goto_new_freq_at_next_zerocrossing, force_nominal_freq;
-wire        [9:0]  wrapped_phase1;     // phi/(2*pi) * 2**10
-wire        [9:0]  inst_frequency1;        // diff(phi)/(2*pi) * 2**10 //now output from the mux that select between DDC1_output, inst_frequency0 or pll0_output
-wire  [10-1+12:0]  inst_frequency1_filtered;       // this is the output of a boxcar filter on the inst_frequency signal, before sending to the DDR2 logger
-wire   [10-1+2:0]  inst_frequency1_filtered_small; // overall filter gain is only equal to its length (4) so we don't really need all the bits
-
-wire        [10-1:0]    DDC1_output;            // diff(phi)/(2*pi) * 2**10
+wire signed [48-1:0]    reference_frequency1;
+wire signed [10-1:0]    wrapped_phase1;     // phi/(2*pi) * 2**10
+wire signed [10-1:0]    DDC1_freq_output;   // diff(phi)/(2*pi) * 2**10
+wire signed [10-1:0]    inst_frequency1;    // diff(phi)/(2*pi) * 2**10 //now output from the mux that select between DDC1_freq_output, inst_frequency0 or pll0_output
+wire signed [(10+12)-1:0]   inst_frequency1_filtered;   // this is the output of a boxcar filter on the inst_frequency signal, before sending to the DDR2 logger
+wire signed [(10+2)-1:0]    inst_frequency1_filtered_small; // overall filter gain is only equal to its length (4) so we don't really need all the bits
 
 
-   parallel_bus_register_64_bits_or_less # (
-        .REGISTER_SIZE(48),
-        .ADDRESS(16'h8010)
-    ) parallel_bus_register_64_bits_or_less_freq1 (
-         .clk(clk1), 
-         .bus_strobe(cmd_trig), 
-         .bus_address(cmd_addr), 
-         .bus_data({cmd_data2in, cmd_data1in}), 
-         .register_output(reference_frequency1), 
-         .update_flag()
-    );
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(48),
+    .ADDRESS(16'h8010)
+) parallel_bus_register_64_bits_or_less_freq1 (
+     .clk(clk1), 
+     .bus_strobe(cmd_trig), 
+     .bus_address(cmd_addr), 
+     .bus_data({cmd_data2in, cmd_data1in}), 
+     .register_output(reference_frequency1), 
+     .update_flag()
+);
 
      
 // The actual DDC:
@@ -675,7 +672,7 @@ DDC_wideband_filters DDC1_inst (
      // Output
     .amplitude(), 
     .wrapped_phase(wrapped_phase1), 
-    .inst_frequency(DDC1_output) //we changed the output name from inst_frequency1 to DDC1_output to be able to select the input of the Loop Filter with a multiplexer
+    .inst_frequency(DDC1_freq_output) //we changed the output name from inst_frequency1 to DDC1_freq_output to be able to select the input of the Loop Filter with a multiplexer
     );
 
 
@@ -685,7 +682,7 @@ DDC_wideband_filters DDC1_inst (
 // Output rate will be fs/2^LOG2_N_CYCLES_INTEGRATION ~ 12.5 Hz
 // Results are sent to a FIFO which goes to an Opal Kelly PipeOut
 ///////////////////////////////////////////////////////////////////////////////
-wire [64-1:0] counter1_out;
+wire signed [64-1:0] counter1_out;
 wire counter1_out_clk_enable;
 
 //zero_deadtime_counter #
@@ -738,9 +735,9 @@ assign inst_frequency1_filtered_small = inst_frequency1_filtered[10-1+2:0];
 ///////////////////////////////////////////////////////////////////////////////
 // Frequency locked loop for the first input:
 ///////////////////////////////////////////////////////////////////////////////
-reg fll0_lock;
-reg [4:0] fll0_gain_left_shift_in_bits, fll0_gain_right_shift_in_bits;
-reg [10+7-1:0] inst_frequency0_filtered_for_fll;
+//reg fll0_lock;
+//reg [4:0] fll0_gain_left_shift_in_bits, fll0_gain_right_shift_in_bits;
+//reg [10+7-1:0] inst_frequency0_filtered_for_fll;
 
 // First an integrate-and-dump filter:
 //integrate_and_dump # (
@@ -796,8 +793,9 @@ reg [10+7-1:0] inst_frequency0_filtered_for_fll;
 // Loop filters for DAC 0:
 wire pll0_lock, pll0_gain_changedp, pll0_gain_changedi, pll0_gain_changedii, pll0_gain_changedd, pll0_coef_changedd;
 wire pll0_gain_changed;
-wire [32-1:0] pll0_gainp, pll0_gaini, pll0_gainii, pll0_gaind, pll0_coefdfilter;
-wire [15:0] pll0_output;
+wire signed [32-1:0] pll0_gainp, pll0_gaini, pll0_gainii, pll0_gaind, pll0_coefdfilter;
+wire signed [16-1:0] pll0_output;
+
 
 // Then the registers which controls the gain and locked/unlocked behavior of the filters:
 parallel_bus_register_32bits_or_less # (
@@ -828,6 +826,7 @@ parallel_bus_register_pll0_gainp (
     .register_output(pll0_gainp), 
     .update_flag(pll0_gain_changedp)
     );
+    
      
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(32),
@@ -888,15 +887,16 @@ parallel_bus_register_pll0_coefdfilter (
     .update_flag(pll0_coef_changedd)
     );
      
+     
 // This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
 assign pll0_gain_changed = pll0_gain_changedp | pll0_gain_changedi | pll0_gain_changedii | pll0_gain_changedd | pll0_coef_changedd;
      
 // Finally the PLL itself:
 PLL_loop_filters_with_saturation # (
-    .N_DIVIDE_P(10), // min gain & max error -> smallest output
-    .N_DIVIDE_I(32), // min gain & max error -> smallest output
-    .N_DIVIDE_II(55), // min gain & max error -> largest output in ~4400s (max gain & max error -> largest output in 1us)
-    .N_DIVIDE_D(11), // min gain & max error -> smallest magnitude output
+    .N_DIVIDE_P(10),
+    .N_DIVIDE_I(27),
+    .N_DIVIDE_II(36),
+    .N_DIVIDE_D(11),
     .N_OUTPUT(16)
 )
 PLL0_loop_filters (
@@ -921,12 +921,14 @@ PLL0_loop_filters (
 // Multiplexer for PLL1 input
 ///////////////////////////////////////////////////////////////////////////////
 wire [2-1:0] loop_filter_1_mux_selector;
-wire [(10-1):0] inst_frequency0_to_pll1;
-wire [(10-1):0] pll0_output_to_pll1;
+wire signed [(10-1):0] inst_frequency0_to_pll1;
+wire signed [(10-1):0] pll0_output_to_pll1;
+
 
 // Change the sign of the input based on the chosen sign of the VCO gain (sign of the reference frequency)
-assign inst_frequency0_to_pll1 = reference_frequency1[47] ? (-$signed(inst_frequency0)) : inst_frequency0;
-assign pll0_output_to_pll1 = reference_frequency1[47] ? (-$signed(pll0_output) >> 6) : (pll0_output >> 6); //pll0_output is 16 bits and in2_mux is 10 bits
+assign inst_frequency0_to_pll1 = reference_frequency1[47] ? (-inst_frequency0) : inst_frequency0;
+assign pll0_output_to_pll1 = reference_frequency1[47] ? (-pll0_output >> 6) : (pll0_output >> 6); //pll0_output is 16 bits and in2_mux is 10 bits
+
 
 // Registers which controls the multiplexer for the PLL1 input:
 parallel_bus_register_32bits_or_less # (
@@ -943,10 +945,11 @@ parallel_bus_register_mux_pll1  (
  .update_flag                   (                           )
 );
 
+
 multiplexer_3to1_async loop_filters_1_mux (
  .clk                               (clk1                       ),
  .selector_mux                      (loop_filter_1_mux_selector ),
- .in0_mux                           (DDC1_output                ), 
+ .in0_mux                           (DDC1_freq_output           ), 
  .in1_mux                           (inst_frequency0_to_pll1    ),
  .in2_mux                           (pll0_output_to_pll1        ),
  .out_mux                           (inst_frequency1            )
@@ -958,8 +961,9 @@ multiplexer_3to1_async loop_filters_1_mux (
 // Loop filters for DAC 1:
 wire pll1_lock, pll1_gain_changedp, pll1_gain_changedi, pll1_gain_changedii, pll1_gain_changedd, pll1_coef_changedd;
 wire pll1_gain_changed;
-wire [32-1:0] pll1_gainp, pll1_gaini, pll1_gainii, pll1_gaind, pll1_coefdfilter;
-wire [15:0] pll1_output;
+wire signed [32-1:0] pll1_gainp, pll1_gaini, pll1_gainii, pll1_gaind, pll1_coefdfilter;
+wire signed [16-1:0] pll1_output;
+
 
 // Then the registers which controls the gain and locked/unlocked behavior of the FLL:
 parallel_bus_register_32bits_or_less # (
@@ -976,6 +980,7 @@ parallel_bus_register_pll1_settings (
     .update_flag()
     );
      
+     
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(32),
     .REGISTER_DEFAULT_VALUE(0),
@@ -990,6 +995,7 @@ parallel_bus_register_pll1_gainp (
     .update_flag(pll1_gain_changedp)
     );
      
+     
 //  // For debugging: we serialize the value of this register because there seems to be a problem with it (we can't use the full range).
 //  serialize_register_value # (
 //      .N_BITS_INPUT(32),
@@ -1000,6 +1006,7 @@ parallel_bus_register_pll1_gainp (
 //      .register_in(pll1_gainp),
 //      .serial_out(DOUT_f[2])
 //  );
+     
      
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(32),
@@ -1016,7 +1023,6 @@ parallel_bus_register_pll1_gaini (
     );
      
 
-     
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(32),
     .REGISTER_DEFAULT_VALUE(0),
@@ -1030,7 +1036,6 @@ parallel_bus_register_pll1_gainii (
     .register_output(pll1_gainii), 
     .update_flag(pll1_gain_changedii)
     );
-     
      
      
 parallel_bus_register_32bits_or_less # (
@@ -1047,6 +1052,7 @@ parallel_bus_register_pll1_gaind (
     .update_flag(pll1_gain_changedd)
     );
     
+    
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(18),
     .REGISTER_DEFAULT_VALUE(0),
@@ -1061,22 +1067,24 @@ parallel_bus_register_pll1_coefdfilter (
     .update_flag(pll1_coef_changedd)
     );
      
+     
 // This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
 assign pll1_gain_changed = pll1_gain_changedp | pll1_gain_changedi | pll1_gain_changedii | pll1_coef_changedd;
      
+     
 // Finally the PLL itself:
 PLL_loop_filters_with_saturation # (
-    .N_DIVIDE_P(10), // min gain & max error -> smallest output
-    .N_DIVIDE_I(32), // min gain & max error -> smallest output
-    .N_DIVIDE_II(55), // min gain & max error -> largest output in ~4400s (max gain & max error -> largest output in 1us)
-    .N_DIVIDE_D(11), // min gain & max error -> smallest magnitude output
+    .N_DIVIDE_P(10),
+    .N_DIVIDE_I(27),
+    .N_DIVIDE_II(36),
+    .N_DIVIDE_D(11),
     .N_OUTPUT(16)
 )
 PLL1_loop_filters (
     .clk(clk1), 
     .lock(pll1_lock), 
     .gain_changed(pll1_gain_changed), 
-    .data_in(inst_frequency1),              // TODO: Change this for inst_frequency2 when we finally add the second DDC core
+    .data_in(inst_frequency1),
     .gain_p(pll1_gainp), 
     .gain_i(pll1_gaini), 
     .gain_ii(pll1_gainii),
@@ -1091,15 +1099,11 @@ PLL1_loop_filters (
 
 ///////////////////////////////////////////////////////////////////////////////
 // Output combiners before sending the results to the DACs:
-wire [15:0] manual_offset_dac0, positive_limit_dac0, negative_limit_dac0;
+wire signed [16-1:0] manual_offset_dac0, positive_limit_dac0, negative_limit_dac0;
 wire dac0_railed_negative, dac0_railed_positive;
 
-wire [15:0] manual_offset_dac1, positive_limit_dac1, negative_limit_dac1;
+wire signed [16-1:0] manual_offset_dac1, positive_limit_dac1, negative_limit_dac1;
 wire dac1_railed_negative, dac1_railed_positive;
-
-wire [19:0] manual_offset_dac2, positive_limit_dac2, negative_limit_dac2;
-wire dac2_railed_negative, dac2_railed_positive;
-
 
 
 // DAC0 limits
@@ -1116,6 +1120,7 @@ parallel_bus_register_dac0_limits (
     .register_output({positive_limit_dac0, negative_limit_dac0}), 
     .update_flag()
     );
+     
      
 // DAC1 limits
 parallel_bus_register_32bits_or_less # (
@@ -1148,6 +1153,7 @@ parallel_bus_register_manual_offset_dac0 (
     .update_flag()
     );
 
+
 // Register which adds a manual offset to the dac1 output:
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(16),
@@ -1163,7 +1169,6 @@ parallel_bus_register_manual_offset_dac1 (
     .update_flag()
     );
      
-
 
 // Output summing and limiting, DAC0
 output_summing # (
@@ -1185,10 +1190,7 @@ output_summing_dac0
     );
 
 
-
 // Output summing and limiting, DAC1
-wire [16-1:0] data_to_dac1_notch_filter;
-
 output_summing # (
     .INPUT_SIZE       (16),
     .OUTPUT_SIZE      (16)
@@ -1212,9 +1214,9 @@ output_summing_dac1
 // Vector Network Analyzer (VNA) which performs transfer function measurements
 // Also includes its own input and output multiplexers
 ///////////////////////////////////////////////////////////////////////////////
-wire [15:0] vna_output_to_dac0, vna_output_to_dac1, vna_output_to_dac2;
+wire signed [16-1:0] vna_output_to_dac0, vna_output_to_dac1, vna_output_to_dac2;
 wire trigger_identification;
-wire [15:0] VNA_output_to_logger;
+wire signed [16-1:0] VNA_output_to_logger;
 wire VNA_output_to_logger_clk_enable;
 
 //assign trigger_identification = TrigIn40[2];
@@ -1252,10 +1254,11 @@ system_identification_vna_with_dither_wrapper system_identification_vna_inst (
 ///////////////////////////////////////////////////////////////////////////////
 // Dither generator + lock-in, which serves to measure the DC gain and sign of the loop
 ///////////////////////////////////////////////////////////////////////////////
-wire            [15:0]              dither_output_to_dac0, dither_output_to_dac1;
-wire            [19:0]              dither_output_to_dac2;
-wire signed     [16*3-1:0]          dither0_lockin_output_to_wires, dither1_lockin_output_to_wires, dither2_lockin_output_to_wires;
-wire                                dither0_lockin_output_clk_enable, dither1_lockin_output_clk_enable, dither2_lockin_output_clk_enable;
+wire signed [16-1:0]        dither_output_to_dac0, dither_output_to_dac1;
+wire signed [20-1:0]        dither_output_to_dac2;
+wire signed [(16*3)-1:0]    dither0_lockin_output_to_wires, dither1_lockin_output_to_wires, dither2_lockin_output_to_wires;
+wire    dither0_lockin_output_clk_enable, dither1_lockin_output_clk_enable, dither2_lockin_output_clk_enable;
+
 
 dither_lockin_wrapper #
 (
@@ -1263,7 +1266,7 @@ dither_lockin_wrapper #
     .CMD_BUS_BITS(16),
     .N_BITS_INPUT(10),
     .N_BITS_OUTPUT(16),
-    .COUNTER_BITS(27),              // 27 bits gives ~ 134 Millions clock cycles, or 1.34 seconds at 100 MHz clock rate
+    .COUNTER_BITS(27),              // 27 bits gives ~ 134 Millions clock cycles, or 1.07 seconds at 125 MHz clock rate
     .SYNC_DELAY(60),                    // should be approximately equal to the known system delay, from output to input, so that most of the signal shows up in the real part
     .INTEGRATORS_BITS(16*3) // should be set to a high enough value to hold the result without wrapping (total size required is log2((N_periods_integration_minus_one+1) * 4*(modulation_period_divided_by_4_minus_one+1)) + N_BITS_INPUT)
             // but should also be a multiple of 16 bits, since this is the size of the Opal Kelly wires which will be used to read out the result.
@@ -1284,13 +1287,14 @@ dither_lockin_wrapper #
     .output_clk_enable   (  dither0_lockin_output_clk_enable  )
 );
 
+
 dither_lockin_wrapper #
 (
     .BASE_ADDRESS(16'h8200),
     .CMD_BUS_BITS(16),
     .N_BITS_INPUT(10),
     .N_BITS_OUTPUT(16),
-    .COUNTER_BITS(27),              // 27 bits gives ~ 134 Millions clock cycles, or 1.34 seconds at 100 MHz clock rate
+    .COUNTER_BITS(27),              // 27 bits gives ~ 134 Millions clock cycles, or 1.07 seconds at 125 MHz clock rate
     .SYNC_DELAY(60),                    // should be approximately equal to the known system delay, from output to input, so that most of the signal shows up in the real part
     .INTEGRATORS_BITS(16*3) // should be set to a high enough value to hold the result without wrapping (total size required is log2((N_periods_integration_minus_one+1) * 4*(modulation_period_divided_by_4_minus_one+1)) + N_BITS_INPUT)
             // but should also be a multiple of 16 bits, since this is the size of the Opal Kelly wires which will be used to read out the result.
@@ -1314,11 +1318,14 @@ dither_lockin_wrapper #
 // for debug: output a fixed value:
 //assign dither_lockin_output_to_wires = {48'b110000000000000000000000000000000000000000000001, 48'b001101100000000000000000000000000000000000001110};
 
+
+
 ///////////////////////////////////////////////////////////////////////////////
 // Sums the output of the VNA and the dither modules
 ///////////////////////////////////////////////////////////////////////////////
-wire            [15:0]              modulation_output_to_dac0, modulation_output_to_dac1;
-wire            [19:0]              modulation_output_to_dac2;
+wire signed [16-1:0]    modulation_output_to_dac0, modulation_output_to_dac1;
+wire signed [20-1:0]    modulation_output_to_dac2;
+
 
 output_summing # (
     .INPUT_SIZE(16),
@@ -1331,11 +1338,12 @@ output_summing_dac0_auxilary (
     .in2(), 
     .in3(), 
     .data_output(modulation_output_to_dac0), 
-     .positive_limit($signed(2**15-1)),
-     .negative_limit($signed(-2**15)),
+    .positive_limit($signed(2**15-1)),
+    .negative_limit($signed(-2**15)),
     .railed_positive(), //dac0_railed_positive
     .railed_negative()  //dac0_railed_negative
     );
+     
      
 output_summing # (
     .INPUT_SIZE(16),
@@ -1348,8 +1356,8 @@ output_summing_dac1_auxilary (
     .in2(), 
     .in3(), 
     .data_output(modulation_output_to_dac1), 
-     .positive_limit($signed(2**15-1)),
-     .negative_limit($signed(-2**15)),
+    .positive_limit($signed(2**15-1)),
+    .negative_limit($signed(-2**15)),
     .railed_positive(), //dac0_railed_positive
     .railed_negative()  //dac0_railed_negative
     );
@@ -1471,22 +1479,18 @@ assign status_flags[11] = 1'b0; // residuals_optical_fifo_has_too_little_samples
 registers_read registers_read_inst
 (
     .clk(clk1),
-    
-
     // Registers inputs (to be read)
     .status_flags(status_flags),
     // these get sampled internally together even though they go through multiple reads by the CPU
     .dither0_lockin_output({  {16{dither0_lockin_output_to_wires[47]}} , dither0_lockin_output_to_wires}),  // manual sign extension from 48 to 64 bits
     // these get sampled internally together even though they go through multiple reads by the CPU
     .dither1_lockin_output({  {16{dither1_lockin_output_to_wires[47]}} , dither1_lockin_output_to_wires}),  // manual sign extension from 48 to 64 bits
-
     // these get sampled internally together even though they go through multiple reads by the CPU
     .zdtc_samples_number_counter(zdtc_samples_number_counter),
     .counter0_out(counter0_out),
     .counter1_out(counter1_out),
     .DAC0_out({  {16{DACout0[15]}} , DACout0}),   // manual sign extension from 16 to 32 bits
     .DAC1_out({  {16{DACout1[15]}} , DACout1}),
-
 
     // internal configuration bus
     .sys_addr        (  { 2'b0, sys_addr[32-1:2]}      ),  // address, note the divide by 4 again to map between zynq addresses and the legacy DPLL addresses

@@ -40,23 +40,22 @@ class Loop_filters_module(object):
         # even the quantization noise at the input (only 1 LSB) can rail the output.
         limit_railing = 2.**(16+self.N_DIVIDE_P)/2.**self.N_DIVIDE_P
 #        return (1./2.**self.N_DIVIDE_P, 2.**31/2.**self.N_DIVIDE_P)
-        return (0./2.**self.N_DIVIDE_P, min([2.**31/2.**self.N_DIVIDE_P, limit_railing]))
+        return (0./2.**self.N_DIVIDE_P, min([(2.**32-1)/2.**self.N_DIVIDE_P, limit_railing]))
         
     def get_i_limits(self):
-        return (0./2.**self.N_DIVIDE_I, 2.**31/2.**self.N_DIVIDE_I)
+        return (0./2.**self.N_DIVIDE_I, (2.**32-1)/2.**self.N_DIVIDE_I)
         
     def get_ii_limits(self):
-        return (0./2.**self.N_DIVIDE_II, 2.**31/2.**self.N_DIVIDE_II)
+        return (0./2.**self.N_DIVIDE_II, (2.**32-1)/2**self.N_DIVIDE_II)
         
-
     def get_d_limits(self):
         # TODO: make sure that this applies to the D branch
         #limit_railing = 2.**(16+self.N_DIVIDE_D)/2.**self.N_DIVIDE_D
 #        return (1./2.**self.N_DIVIDE_P, 2.**31/2.**self.N_DIVIDE_P)
-        return (0./2.**self.N_DIVIDE_D, 2.**31/2.**self.N_DIVIDE_D)        
+        return (0./2.**self.N_DIVIDE_D, (2.**32-1)/2.**self.N_DIVIDE_D, )        
         
     def get_df_limits(self):
-        return (1./2.**self.N_DIVIDE_DF, 2.**31/2.**self.N_DIVIDE_DF, 2.**self.N_DIVIDE_DF)
+        return (0., 1., 2.**self.N_DIVIDE_DF)
         
     def get_current_gains(self):
         return ( self.gain_p, self.gain_i, self.gain_ii )
@@ -89,29 +88,27 @@ class Loop_filters_module(object):
         # settings register: 1 bit: bLock
         bDebugOutput = False
         
-        if gain_p > (2**31 - 1)/2.**self.N_DIVIDE_P:
+        if gain_p > max(self.get_p_limits()): #(2**32 - 1)/2.**self.N_DIVIDE_P:
             if bDebugOutput:
                 print('Error: P Gain clamped.')
-            gain_p = (2**31 - 1)/2.**self.N_DIVIDE_P
-        if gain_i > (2**31 - 1)/2.**self.N_DIVIDE_I:
+            gain_p = max(self.get_p_limits())
+        if gain_i > max(self.get_i_limits()): #(2**31 - 1)/2.**self.N_DIVIDE_I:
             if bDebugOutput:
                 print('Error: I Gain clamped.')
-            gain_i = (2**31 - 1)/2.**self.N_DIVIDE_I
+            gain_i = max(self.get_i_limits())
             
-        if gain_ii > (2**31 - 1)/2.**self.N_DIVIDE_II:
+        if gain_ii > max(self.get_ii_limits()): #(2**31 - 1)/2.**self.N_DIVIDE_II:
             if bDebugOutput:
                 print('Error: II Gain clamped.:')
-                print('gain_ii = %e' % gain_ii)
-                print('gain_ii > %e' % ((2**31 - 1)/2.**self.N_DIVIDE_II))
-            gain_ii = (2**31 - 1)/2.**self.N_DIVIDE_II
-        if gain_d > (2**31 - 1)/2.**self.N_DIVIDE_D:
+            gain_ii = max(self.get_ii_limits())
+        if gain_d > max(self.get_d_limits()): #(2**31 - 1)/2.**self.N_DIVIDE_D:
             if bDebugOutput:
                 print('Error: D Gain clamped.')
-            gain_d = (2**31 - 1)/2.**self.N_DIVIDE_D
-        if coef_d > (2**18 - 1)/2.**self.N_DIVIDE_DF:
+            gain_d = max(self.get_d_limits())
+        if coef_d > 1: #(2**18 - 1)/2.**self.N_DIVIDE_DF:
             if bDebugOutput:
                 print('Error: DF Coef clamped.')
-            coef_d = (2**18 - 1)/2.**self.N_DIVIDE_DF
+            coef_d = 1
             
         
         gain_p_int = int(round(gain_p*2.**self.N_DIVIDE_P))
@@ -186,8 +183,8 @@ class PLL0_module(Loop_filters_module):
     # Values that are fixed in the firmware (VHDL/Verilog code)
     bus_base_address = 0x7000
     N_DIVIDE_P = 10
-    N_DIVIDE_I = 32
-    N_DIVIDE_II = 55
+    N_DIVIDE_I = 27
+    N_DIVIDE_II = 36
     N_DIVIDE_D = 11
     N_DIVIDE_DF = 18
     
@@ -199,8 +196,8 @@ class PLL1_module(Loop_filters_module):
     # Values that are fixed in the firmware (VHDL/Verilog code)
     bus_base_address = 0x7010
     N_DIVIDE_P = 10
-    N_DIVIDE_I = 32
-    N_DIVIDE_II = 55
+    N_DIVIDE_I = 27
+    N_DIVIDE_II = 36
     N_DIVIDE_D = 11
     N_DIVIDE_DF = 18
 

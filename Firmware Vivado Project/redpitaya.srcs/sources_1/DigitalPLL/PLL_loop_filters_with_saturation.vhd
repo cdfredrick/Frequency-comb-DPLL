@@ -8,8 +8,8 @@
 -- Project Name: 
 -- Target Devices: 
 -- Tool versions: 
--- Description:  Implements a PII^2 filter, according to the following equation:
--- data_out = gain_p/2^N_DIVIDE_P*data_in + gain_i/2^N_DIVIDE_I * cumsum(data_in) + gain_ii/2^N_DIVIDE_II * cumsum(cumsum(data_in))
+-- Description:  Implements a PIID filter, according to the following equation:
+-- data_out = (gain_p/2^N_DIVIDE_P)*data_in + (gain_i/2^N_DIVIDE_I)*cumsum(data_in) + (gain_ii/2^N_DIVIDE_II)*cumsum(cumsum(data_in)) + (gain_d/2^N_DIVIDE_D)*diff(exp_avg(data_in, coef_d_filter))
 -- Note that this equation does not include the delays, quantization and the saturation.
 -- Each branch is saturated independently, and the sum is also saturated.
 -- The quantization happens before the output summing block.
@@ -38,157 +38,130 @@ entity PLL_loop_filters_with_saturation is
 	Generic (
 		-- Constants which control the scaling:
 		-- Each branch's output is divided by 2^N
-		N_DIVIDE_P 	: integer := 24;
-		N_DIVIDE_I 	: integer := 24;	-- 16 + log2(100e6/(2*pi*3e3)), where 100e6 is the sampling frequency and 3e3 is the nominal corner frequency of the PI
-		N_DIVIDE_II : integer := 35;
-        N_DIVIDE_D  : integer := 32;
+		N_DIVIDE_P 	: integer := 10;      -- log2(max_freq_err * min_p_gain), minimum output with maximum error and minimum gain
+		N_DIVIDE_I 	: integer := 33;      -- log2(max_freq_err * max_i_gain * 1us * 125MHz) - 16, saturation in 1us with maximum error and maximum gain
+		N_DIVIDE_II : integer := 59;      -- log2(max_freq_err * max_ii_gain * 0.5*(1ms * 125MHz)**2) - 16, saturation in 1ms with maximum error and maximum gain
+        N_DIVIDE_D  : integer := 11;      -- log2(max_freq_err_derivative * min_d_gain) - (18 + 3), minimum output with maximum error and minimum gain
 		N_OUTPUT 	: integer := 16
-	
 	);
     Port (
 		clk             : in  std_logic;
 		lock            : in  std_logic;
 		gain_changed    : in  std_logic;
-		data_in         : in  std_logic_vector (9 downto 0);
-		gain_p          : in  std_logic_vector (31 downto 0);
-		gain_i          : in  std_logic_vector (31 downto 0);
-		gain_ii         : in  std_logic_vector (31 downto 0);
-		gain_d          : in  std_logic_vector (31 downto 0);
-		coef_d_filter   : in  std_logic_vector (17 downto 0);
-		phase_residuals : out std_logic_vector (31 downto 0);
-		data_out        : out std_logic_vector (N_OUTPUT-1 downto 0);
+		data_in         : in  signed(10-1 downto 0);
+		gain_p          : in  signed(32-1 downto 0);
+		gain_i          : in  signed(32-1 downto 0);
+		gain_ii         : in  signed(32-1 downto 0);
+		gain_d          : in  signed(32-1 downto 0);
+		coef_d_filter   : in  signed(18-1 downto 0);
+		phase_residuals : out signed(32-1 downto 0);
+		data_out        : out signed(N_OUTPUT-1 downto 0);
 		saturated_low   : out std_logic;
 		saturated_high  : out std_logic
     );
 end PLL_loop_filters_with_saturation;
 
-architecture Behavioral of PLL_loop_filters_with_saturation is
 
-	--Coregen declarations
+architecture Behavioral of PLL_loop_filters_with_saturation is
+	--CoreGen declarations
 	-----------------------------------------------------------------------
-	-- Multiplier, 10x32 input bits, 42 output bits
-	component pll_wide_mult
+	-- Multiplier, 10x32 input bits, 42 output bits, synchronous clear
+	-- 4 clock cycles of delay
+	component pll_10x32_mult
 	port (
 		clk  : in std_logic;
-		a    : in std_logic_vector(9 downto 0);
-		b    : in std_logic_vector(31 downto 0);
+		a    : in signed(10-1 downto 0);
+		b    : in signed(32-1 downto 0);
 		sclr : in std_logic;
-		p    : out std_logic_vector(41 downto 0));
+		p    : out signed(42-1 downto 0));
 	end component;
 	
 	-- Multiplier, 32x32 input bits, 64 output bits, synchronous clear
-	component pll_32x32_mult_ii
+	-- 6 clock cycles of delay
+	component pll_32x32_mult
 	port (
 		clk  : in std_logic;
-		a    : in std_logic_vector(31 downto 0);
-		b    : in std_logic_vector(31 downto 0);
+		a    : in signed(32-1 downto 0);
+		b    : in signed(32-1 downto 0);
 		sclr : in std_logic;
-		p    : out std_logic_vector(63 downto 0));
+		p    : out signed(64-1 downto 0));
 	end component;
-    
---	-- Multiplier, 18x32 input bits, 64 output bits, synchronous clear
---	component pll_18x32_mult_d
---		port (
---		clk: in std_logic;
---		a: in std_logic_vector(17 downto 0);
---		b: in std_logic_vector(31 downto 0);
---		sclr : in std_logic;
---		p: out std_logic_vector(49 downto 0));
---	end component;
+	
 	
 	-- Internal variables
 	-----------------------------------------------------------------------
-	-- P branch signals
-	signal p_mult_output                        : std_logic_vector(41 downto 0) := (others => '0');
-	signal p_out                                : std_logic_vector(N_OUTPUT-1 downto 0) := (others => '0');
-	signal p_railed_positive, p_railed_negative : std_logic := '0';
-	
-	-- This accumulator integrates the frequency error to yield the phase error, and its result is used by both the I and the I^2 branch:
-	-- We arbitrarily decide on using 32 bits for the result (mostly because it fits well in the next 32x32 MULT)
-	-- The freq error has 10 fractional bits which means that there are 22 integer bits of phase error, or 2e6 * 2*pi radians of linear range.
+	-- Phase residuals monitor
 	constant N_BITS_PHASE_RESULT   : integer := 32;
 	signal phase_error_accumulator : signed(N_BITS_PHASE_RESULT-1 downto 0) := (others => '0');
-	signal phase_error_accumulator_resized : std_logic_vector(32-1 downto 0) := (others => '0');
-	-- the extra bit in these signals is to hold the full, unwrapped result
-	constant PHASE_ACCUM_MAX : signed(N_BITS_PHASE_RESULT+1-1 downto 0) := shift_left(to_signed(1, N_BITS_PHASE_RESULT+1), N_BITS_PHASE_RESULT-1)-1;	-- (2^(N_BITS_PHASE_RESULT-1)-1)
-	constant PHASE_ACCUM_MIN : signed(N_BITS_PHASE_RESULT+1-1 downto 0) := shift_left(to_signed(-1, N_BITS_PHASE_RESULT+1), N_BITS_PHASE_RESULT-1);	-- (-2**(N_BITS_PHASE_RESULT-1))
+	   -- the extra bit in these signals is to hold the full, unwrapped result
+	constant PHASE_ACCUM_MAX : signed((N_BITS_PHASE_RESULT+1)-1 downto 0) := shift_left(to_signed(1, N_BITS_PHASE_RESULT+1), N_BITS_PHASE_RESULT-1)-1;	-- (2^(N_BITS_PHASE_RESULT-1)-1)
+	constant PHASE_ACCUM_MIN : signed((N_BITS_PHASE_RESULT+1)-1 downto 0) := shift_left(to_signed(-1, N_BITS_PHASE_RESULT+1), N_BITS_PHASE_RESULT-1);	-- (-2**(N_BITS_PHASE_RESULT-1))
+	
+	-- P branch signals
+	signal p_mult_out                              : signed(42-1 downto 0) := (others => '0');
+	signal p_mult_divided                          : signed((p_mult_out'length-N_DIVIDE_P)-1 downto 0) := (others => '0');
+	signal p_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal p_railed_positive, p_railed_negative    : std_logic := '0';
 	
 	-- I branch signals
-	signal i_mult_output                        : std_logic_vector(32+32-1 downto 0) := (others => '0');
-	signal i_out                                : std_logic_vector(N_OUTPUT-1 downto 0) := (others => '0');
-	signal i_railed_positive, i_railed_negative : std_logic := '0';
+	signal i_mult_out                              : signed(42-1 downto 0) := (others => '0');
+	signal i_accumulator_out                       : signed((N_OUTPUT+N_DIVIDE_I)-1 downto 0) := (others => '0');
+	signal i_railed_positive, i_railed_negative    : std_logic := '0';
+	signal i_accumulator_divided                   : signed((i_accumulator_out'length-N_DIVIDE_I)-1 downto 0) := (others => '0');
+	signal i_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
 
 	-- II branch signals
-	signal ii_mult_output, ii_mult_output_reg                         : std_logic_vector(32+32-1 downto 0) := (others => '0');
-	
-	signal second_stage_railed_positive, second_stage_railed_negative : std_logic := '0';
-	signal ii_accumulator                                             : std_logic_vector(N_OUTPUT+N_DIVIDE_II-1 downto 0) := (others => '0');
-	signal ii_accumulator_resized                                     : std_logic_vector(ii_accumulator'length-N_DIVIDE_II-1 downto 0) := (others => '0');
-	signal ii_out                                                     : std_logic_vector(N_OUTPUT-1 downto 0) := (others => '0');
-	signal ii_railed_positive, ii_railed_negative                     : std_logic := '0';
+	signal ii_mult_out                                                 : signed(42-1 downto 0) := (others => '0');
+	signal ii_1st_stage_accumulator_out                                : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_1st_stage_railed_positive, ii_1st_stage_railed_negative  : std_logic := '0';
+	signal ii_2nd_stage_accumulator_out                                : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_railed_positive, ii_railed_negative                      : std_logic := '0';
+	signal ii_2nd_stage_accumulator_divided                            : signed((ii_2nd_stage_accumulator_out'length-N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_out                                                      : signed(N_OUTPUT-1 downto 0) := (others => '0');
 	
     -- D branch signals
     -- signal data_in_dly : std_logic_vector(9 downto 0) := (others => '0');
-	signal data_diff        : std_logic_vector(32-1 downto 0)       := (others => '0');
-	signal d_mult_output    : std_logic_vector(64-1 downto 0)       := (others => '0');
-	signal d_out_unfiltered : std_logic_vector(N_OUTPUT-1 downto 0) := (others => '0');
-	signal d_out            : std_logic_vector(N_OUTPUT-1 downto 0) := (others => '0');
-	signal d_in_filt        : std_logic_vector(14-1 downto 0)       := (others => '0');
-	signal d_out_filt       : std_logic_vector(32-1 downto 0)       := (others => '0');
-	signal d_out_filt_dly   : std_logic_vector(32-1 downto 0)       := (others => '0');
-    
-	signal d_railed_positive, d_railed_negative            : std_logic := '0';
+	signal d_filt_in                               : signed(14-1 downto 0)       := (others => '0');
+	signal d_filt_out                              : signed(32-1 downto 0)       := (others => '0');
+	signal d_filt_out_dly                          : signed(32-1 downto 0)       := (others => '0');
+	signal data_diff                               : signed(32-1 downto 0)       := (others => '0');
+	signal d_mult_out                           : signed(64-1 downto 0)       := (others => '0');
+	signal d_mult_divided                          : signed((64-18-3-N_DIVIDE_D)-1 downto 0)       := (others => '0');
+	signal d_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal d_railed_positive, d_railed_negative    : std_logic := '0';
 	
 	-- Summing node signals
-	signal output_sum                                      : signed(N_OUTPUT-1+2 downto 0) := (others => '0');    -- the extra two bits are to handle the full range result without overflowing
-	signal sum_railed_negative, sum_railed_positive        : std_logic := '0';    -- this is used for the anti-windup behavior (we stop integrating if the sum is railed, even if the integrator isn't)
+	signal output_sum                                      : signed((N_OUTPUT+2)-1 downto 0) := (others => '0');   -- the extra two bits are to handle the full range result without overflowing
+	signal sum_railed_negative, sum_railed_positive        : std_logic := '0'; -- this is used for the anti-windup behavior (we stop integrating if the sum is railed, even if the integrator isn't)
 	
 	-- Flags which indicate internal state
 	signal synchronous_clear                               : std_logic := '0'; -- resets everything, asserted when either gain_changed = '1' or lock = '0'
-	signal saturated_high_internal, saturated_low_internal : std_logic := '0';    -- indicates to the external world when one of the internal signal is saturated
-begin
+	signal saturated_high_internal, saturated_low_internal : std_logic := '0'; -- indicates to the external world when one of the internal signal is saturated
 
+
+begin
 	-- Synchronous clear of the internal signals either when we are out of lock, or when the gains are changed:
 	synchronous_clear <= gain_changed or not lock;
-
-	-- Proportionnal branch
+    
+    
+    -- Phase Residuals Monitor
 	----------------------------------------------------------------
-	pll_wide_mult_p : pll_wide_mult
-	port map (
-		clk               => clk,
-		a                 => data_in,
-		b                 => gain_p,
-		sclr              => synchronous_clear,
-		p                 => p_mult_output
-	);
-
-	-- Division by 2^N_DIVIDE_P and saturation for P branch, adds 1 cycle of delay:
-	p_saturation_inst: entity work.resize_with_saturation
-	GENERIC MAP (
-		N_INPUT           => p_mult_output'length-N_DIVIDE_P,
-		N_OUTPUT          => p_out'length
-	)
-	PORT MAP (
-		clk               => clk,
-		synchronous_clear => synchronous_clear,
-		data_in           => p_mult_output(p_mult_output'length-1 downto N_DIVIDE_P),
-		railed_positive   => p_railed_positive,
-		railed_negative   => p_railed_negative,
-		data_out          => p_out
-	);
-
-	-- Saturating accumulator which generates the phase error by integrating the frequency error (NO ANTI-WINDUP: this is by design because having anti-windup here would mean not integrating part of the error signal),
-	-- this result is used by both the I and the I^2 branch.  Adds 1 clock cycle of delay.
-	-- phase_error_accumulator = saturate(cumsum(data_in))
+    -- This saturating accumulator integrates the frequency error to yield the phase error, and its result is used to monitor the lock state.
+	-- We arbitrarily decide on using 32 bits for the result.
+	-- The freq error has 10 fractional bits which means that there are 22 integer bits of phase error, or 2e6 * 2*pi radians of linear range.
+	-- NO ANTI-WINDUP: this is by design because having anti-windup here would mean not integrating part of the error signal.
+	--
+	-- phase_residuals = saturate(cumsum(data_in))
+	-- 1 total clock cycle of delay
 	process (clk)
-		variable temp_sum : signed(phase_error_accumulator'length+1-1 downto 0) := (others => '0');
+		variable temp_sum : signed((phase_error_accumulator'length+1)-1 downto 0) := (others => '0');
 	begin
 		if rising_edge(clk) then
-			if gain_changed = '1' or lock = '0' then
+			if synchronous_clear = '1' then
 				phase_error_accumulator <= (others => '0');
 			else
 				-- This holds the full 33-bits result of the accumulation without saturation or overflow
-				temp_sum := resize(phase_error_accumulator, temp_sum'length) + resize(signed(data_in), temp_sum'length);
+				temp_sum := resize(phase_error_accumulator, temp_sum'length) + resize(data_in, temp_sum'length);
 				if temp_sum > PHASE_ACCUM_MAX then
 					-- Railed positive
 					phase_error_accumulator <= PHASE_ACCUM_MAX(phase_error_accumulator'range);--to_signed(2**31-1, 32);
@@ -203,176 +176,265 @@ begin
 		end if;
 	end process;
 	-- for monitoring the lock state:
-	phase_residuals <= std_logic_vector(phase_error_accumulator);
-	
-	-- Integrator branch
+	phase_residuals <= phase_error_accumulator;
+    
+    
+	-- Proportionnal branch
 	----------------------------------------------------------------
+	-- ***describe***
+	--
+	-- p_out = saturate((data_in*gain_p)/2^N_DIVIDE_P)
+	-- 5 total clock cycles of delay
 	
-	-- Multiplier, i_mult_output = gain_i * phase_error_accumulator (exact integer arithmetic, 32x32 = 64 bits result)
-	-- 32x32 Multiplier which scales the integrated phase, 8 clock cycles of delay:
-	pll_32x32_mult_i_inst : pll_32x32_mult_ii
+	-- Multiplication of data_in by gain_p:
+	-- 10x32 multiplier, output is 42 bits
+	-- p_mult_out = data_in*gain_p
+	-- 4 clock cycles of delay
+	pll_mult_p : pll_10x32_mult
 	port map (
 		clk               => clk,
-		a                 => phase_error_accumulator_resized,    -- the resize is only for the case where phase_error_accumulator is smaller than the 'a' operand, which occurs in simulation when we want to speed up the integrator overflow test.
-		b                 => gain_i,
+		a                 => data_in,
+		b                 => gain_p,
 		sclr              => synchronous_clear,
-		p                 => i_mult_output
+		p                 => p_mult_out
 	);
-
-	phase_error_accumulator_resized <= std_logic_vector(resize(phase_error_accumulator, 32)); -- the resize is only for the case where phase_error_accumulator is smaller than the 'a' operand, which occurs in simulation when we want to speed up the integrator overflow test.
-
-	-- Division by 2^N_DIVIDE_I and saturation for I branch, adds 1 cycle of delay:
-	i_saturation_inst: entity work.resize_with_saturation
+    
+	-- Division of p_mult_out by 2^N_DIVIDE_P:
+	-- Keeps p_mult_out's (42-N_DIVIDE_P) MSBs
+	-- p_mult_divided = p_mult_out/2^N_DIVIDE_P
+	-- 0 clock cycles of delay
+	p_mult_divided <= p_mult_out(p_mult_out'length-1 downto N_DIVIDE_P);
+	
+	-- Saturation for P branch:
+	-- Keeps p_mult_divided's N_OUTPUT LSBs
+	-- p_out = saturate(p_mult_divided)
+	-- 1 clock cycle of delay
+	pll_p_saturation: entity work.resize_with_saturation
 	GENERIC MAP (
-		N_INPUT           => i_mult_output'length-N_DIVIDE_I,
-		N_OUTPUT          => i_out'length
+		N_INPUT           => p_mult_divided'length,
+		N_OUTPUT          => p_out'length
 	)
 	PORT MAP (
 		clk               => clk,
 		synchronous_clear => synchronous_clear,
-		data_in           => i_mult_output(i_mult_output'length-1 downto N_DIVIDE_I),
-		railed_positive   => i_railed_positive,
-		railed_negative   => i_railed_negative,
-		data_out          => i_out
+		data_in           => p_mult_divided,
+		railed_positive   => p_railed_positive,
+		railed_negative   => p_railed_negative,
+		data_out          => p_out
 	);
-
-
-
-	-- Double-Integrator branch
-	----------------------------------------------------------------
-	-- We use the phase_error_accumulator result, scale the result, then accumulate again, and finally divide by N_DIVIDE_II.
+    
 	
-	-- Multiplier, ii_mult_output = gain_ii * phase_error_accumulator (exact integer arithmetic, 32x32 = 64 bits result)
-	-- 32x32 Multiplier which scales the integrated phase, 8 clock cycles of delay:
-	pll_32x32_mult_ii_inst : pll_32x32_mult_ii
+	-- Integrator branch
+	----------------------------------------------------------------
+	-- ***describe***
+	-- Multiplier, i_mult_output = gain_i * phase_error_accumulator (exact integer arithmetic, 32x32 = 64 bits result)
+	--
+	-- i_out = saturate(cumsum(data_in*gain_i))/2^N_DIVIDE_I
+	-- 5 total clock cycles of delay
+	
+	-- Multiplication of data_in by gain_i:
+	-- 10x32 multiplier, output is 42 bits
+	-- i_mult_out = data_in*gain_i
+	-- 4 clock cycles of delay
+	pll_mult_i : pll_10x32_mult
 	port map (
 		clk               => clk,
-		a                 => phase_error_accumulator_resized,    -- the resize is only for the case where phase_error_accumulator is smaller than the 'a' operand, which occurs in simulation when we want to speed up the integrator overflow test.
-		b                 => gain_ii,
+		a                 => data_in,
+		b                 => gain_i,
 		sclr              => synchronous_clear,
-		p                 => ii_mult_output
+		p                 => i_mult_out
 	);
-
-	-- register stage between the multiplier and the integrator to help with timing closure:
-	process (clk)
-	begin
-		if rising_edge(clk) then
-			ii_mult_output_reg <= ii_mult_output;
-		end if;
-	end process;
-
-	-- Integrator with saturation (exact integer arithmetic, other than the saturation behavior).  Also has anti-windup.
-	integrator_with_saturation_inst2 : entity work.integrator_with_saturation
+    
+    -- Integration of i_mult_out with saturation and anti-windup:
+    -- Output saturates at (N_OUTPUT+N_DIVIDE_I) bits
+    -- i_accumulator_out = saturate(cumsum(i_mult_out))
+    -- 1 clock cycle of delay
+	i_integrator_saturation : entity work.integrator_with_saturation
 	generic map (
-		N_INPUT => ii_mult_output'length,
-		N_OUTPUT => ii_accumulator'length
+		N_INPUT => i_mult_out'length,
+		N_OUTPUT => i_accumulator_out'length
 	) port map (
 		clk                 => clk,
 		sclr                => synchronous_clear,
 		railed_positive     => sum_railed_positive,
 		railed_negative     => sum_railed_negative,
-		data_in             => ii_mult_output_reg,
-		data_out            => ii_accumulator,
-		railed_positive_out => second_stage_railed_positive,
-		railed_negative_out => second_stage_railed_negative
-
+		data_in             => i_mult_out,
+		data_out            => i_accumulator_out,
+		railed_positive_out => i_railed_positive,
+		railed_negative_out => i_railed_negative
 	);
-				
-	-- Division by 2^N_DIVIDE_II and saturation for II branch, adds 1 cycle of delay:
-	ii_saturation_inst: entity work.resize_with_saturation
-	GENERIC MAP (
-		N_INPUT               => ii_accumulator'length-N_DIVIDE_II,
-		N_OUTPUT              => ii_out'length
-	)
-	PORT MAP (
-			clk               => clk,
-			synchronous_clear => synchronous_clear,
-			data_in           => ii_accumulator_resized,
-			railed_positive   => ii_railed_positive,
-			railed_negative   => ii_railed_negative,
-			data_out          => ii_out
+	
+	-- Division of i_accumulator_out by 2^N_DIVIDE_I:
+	-- Keeps i_accumulator_out's N_OUTPUT MSBs
+	-- i_out = i_accumulator_out/2^N_DIVIDE_I
+	-- 0 clock cycles of delay
+	i_out <= i_accumulator_out(i_accumulator_out'length-1 downto N_DIVIDE_I);
+    
+    
+	-- Double-Integrator branch
+	----------------------------------------------------------------
+	-- ***describe***
+	-- We use the phase_error_accumulator result, scale the result, then accumulate again, and finally divide by N_DIVIDE_II.
+	--
+	-- gain_ii/2^N_DIVIDE_II * cumsum(cumsum(data_in))
+	-- 6 total clock cycles of delay
+	
+	-- Multiplication of data_in by gain_ii:
+	-- 10x32 multiplier, output is 42 bits
+	-- ii_mult_out = data_in*gain_ii
+	-- 4 clock cycles of delay
+	pll_mult_ii : pll_10x32_mult
+	port map (
+		clk               => clk,
+		a                 => data_in,
+		b                 => gain_ii,
+		sclr              => synchronous_clear,
+		p                 => ii_mult_out
 	);
-
-	ii_accumulator_resized <= ii_accumulator(ii_accumulator'length-1 downto N_DIVIDE_II);
-
+    
+    -- 1st stage integration of ii_mult_out with saturation and anti-windup:
+    -- Output saturates at (N_OUTPUT+N_DIVIDE_II) bits
+    -- ii_1st_stage_accumulator_out = saturate(cumsum(ii_mult_out))
+    -- 1 clock cycle of delay
+	ii_1st_stage_integrator_saturation : entity work.integrator_with_saturation
+	generic map (
+		N_INPUT => ii_mult_out'length,
+		N_OUTPUT => ii_1st_stage_accumulator_out'length
+	) port map (
+		clk                 => clk,
+		sclr                => synchronous_clear,
+		railed_positive     => ii_railed_positive,
+		railed_negative     => ii_railed_negative,
+		data_in             => ii_mult_out,
+		data_out            => ii_1st_stage_accumulator_out,
+		railed_positive_out => ii_1st_stage_railed_positive,
+		railed_negative_out => ii_1st_stage_railed_negative
+	);
+	
+	-- 2nd stage integration of ii_mult_out with saturation and anti-windup:
+    -- Output saturates at (N_OUTPUT+N_DIVIDE_II) bits
+    -- ii_2nd_stage_accumulator_out = saturate(cumsum(ii_1st_stage_accumulator_out))
+    -- 1 clock cycle of delay
+	ii_2nd_stage_integrator_saturation : entity work.integrator_with_saturation
+	generic map (
+		N_INPUT => ii_1st_stage_accumulator_out'length,
+		N_OUTPUT => ii_2nd_stage_accumulator_out'length
+	) port map (
+		clk                 => clk,
+		sclr                => synchronous_clear,
+		railed_positive     => sum_railed_positive,
+		railed_negative     => sum_railed_negative,
+		data_in             => ii_1st_stage_accumulator_out,
+		data_out            => ii_2nd_stage_accumulator_out,
+		railed_positive_out => ii_railed_positive,
+		railed_negative_out => ii_railed_negative
+	);
+	
+	-- Division of ii_2nd_stage_accumulator_out by 2^N_DIVIDE_II:
+	-- Keeps ii_2nd_stage_accumulator_out's N_OUTPUT MSBs
+	-- ii_out = ii_2nd_stage_accumulator_out/2^N_DIVIDE_II
+	-- 0 clock cycles of delay
+	ii_out <= ii_2nd_stage_accumulator_out(ii_2nd_stage_accumulator_out'length-1 downto N_DIVIDE_II);
+    
+    
 	-- Differentiator with filter branch
 	----------------------------------------------------------------
-   
-    process (clk) is
-    begin
-        if rising_edge(clk) then
-            d_in_filt <= std_logic_vector(shift_left(resize(signed(data_in), d_in_filt'length), 3));
-        end if;
-    end process;
-        
-        
-    IIR_LPF_inst : entity work.IIR_LPF
-    generic map (
-        N_DATA => d_in_filt'length
-    ) port map (
+    -- ***describe***
+    --
+    -- d_out = saturate((gain_d*diff(exp_avg(data_in, coef_d_filter)))/2^N_DIVIDE_D)
+    -- 12 total clock cycles of delay
+    
+    -- Rescale data_in for input into the exponential filter:
+    -- Output is 14 bits
+    -- d_filt_in = data_in * 2^3
+    -- 0 clock cycles of delay
+    d_filt_in <= shift_left(resize(data_in, d_filt_in'length), 3);
+    
+    -- Exponential filter of data_in:
+    -- Output is 32 bits
+    -- d_filt_out = d_filt_out + coef_d_filter * (d_filt_in - d_filt_out)
+    -- 4 clock cycles of delay
+    IIR_LPF_inst : entity work.IIR_LPF_14to32
+    port map (
         clk      => clk,
         coef     => coef_d_filter,
-        data_in  => d_in_filt,
-        data_out => d_out_filt
+        data_in  => d_filt_in,
+        data_out => d_filt_out
     );
     
+    -- Differentiate d_filt_out:
+    -- Output is 32 bits
+    -- data_diff = d_filt_out - d_filt_out_dly
+    -- 1 clock cycle of delay
     process (clk) is
     begin
         if rising_edge(clk) then
-            d_out_filt_dly <= d_out_filt;
-            data_diff <= std_logic_vector(signed(d_out_filt) - signed(d_out_filt_dly));
+            d_filt_out_dly <= d_filt_out;
+            data_diff <= d_filt_out - d_filt_out_dly;
         end if;
     end process;
     
-    pll_wide_mult_d : pll_32x32_mult_ii
+    -- Multiplication of data_diff by gain_d:
+    -- 32x32 multiplier, output is 64 bits
+    -- d_mult_out = data_diff * gain_d
+    -- 6 clock cycle of delay
+    pll_mult_d : pll_32x32_mult
     port map (
         clk  => clk,
         a    => data_diff,
         b    => gain_d,
         sclr => synchronous_clear,
-        p    => d_mult_output
+        p    => d_mult_out
     );
-    	
-	-- Division by 2^N_DIVIDE_D and saturation for D branch, adds 1 cycle of delay:
+    
+    -- Division of d_mult_out by 2^(N_DIVIDE_D+18+3):
+    -- In addition to N_DIVIDE_D, there is also a factor of 18+3 to cancel the effective gain of the exponential filter 
+	-- Keeps d_mult_out's (64-(N_DIVIDE_D+18+3)) MSBs
+	-- d_mult_divided = d_mult_out/2^(N_DIVIDE_P+18+3)
+	-- 0 clock cycles of delay
+	d_mult_divided <= d_mult_out(d_mult_out'length-1 downto (N_DIVIDE_D+18+3));
+	
+	-- Saturation for D branch:
+	-- Keeps d_mult_divided's N_OUTPUT LSBs
+	-- d_out = saturate(d_mult_divided)
+	-- 1 clock cycle of delay
     d_saturation_inst: entity work.resize_with_saturation
     GENERIC MAP (
-        N_INPUT  => d_mult_output'length-N_DIVIDE_D-18-3,
+        N_INPUT  => d_mult_divided'length,
         N_OUTPUT => d_out'length
     )
     PORT MAP (
         clk => clk,
         synchronous_clear => synchronous_clear,
-        data_in           => d_mult_output(d_mult_output'length-1 downto N_DIVIDE_D+18+3),
+        data_in           => d_mult_divided,
         railed_positive   => d_railed_positive,
         railed_negative   => d_railed_negative,
         data_out          => d_out
     );
     
     
-    
-			
-
-	
 	-- Output summing node
 	----------------------------------------------------------------
-	-- Output_sum was expanded a little bit to never overflow (we're summing three inputs that are already saturated to the output range and so we need only 2 extra bits to handle the full result
-	-- This assumes that all three inputs have been properly saturated beforehand
-	with synchronous_clear select
-		-- JDD 12-08-2016: disabled D branch to try to make it fit into the smallest Zynq (Red Pitaya)
-		-- JDD 15-06-2017: re-enabled D branch since there was enough DSP slices
-		output_sum <=	resize(signed(p_out),			N_OUTPUT+2) + 
-						resize(signed(i_out),			N_OUTPUT+2) + 
-						resize(signed(ii_out),			N_OUTPUT+2) + 
-						resize(signed(d_out),			N_OUTPUT+2) when '0',
-						(others => '0') 							when others;
-
-		--output_sum <=	resize(signed(p_out),			N_OUTPUT+2) + 
-		--				resize(signed(i_out),			N_OUTPUT+2) + 
-		--				resize(signed(ii_out),			N_OUTPUT+2) when '0',
-		--				(others => '0') 							when others;
-						
-	-- Saturation for output sum, adds 1 cycle of delay:
-   out_saturation_inst: entity work.resize_with_saturation
+	-- ***describe***
+    --
+    -- data_out = saturate(p_out + i_out + ii_out + d_out)
+    -- X total clock cycles of delay
+    
+	-- Sum of the separate branches without overflow:
+	-- This assumes that all three inputs have been properly saturated beforehand so we need only 2 extra bits to handle the full result.
+	-- Output is (N_OUTPUT+2) bits
+	-- output_sum = p_out + i_out + ii_out + d_out
+	-- 0 clock cycles of delay
+	output_sum <=	resize(p_out,			N_OUTPUT+2) +
+	                resize(i_out,			N_OUTPUT+2) +
+	                resize(ii_out,			N_OUTPUT+2) +
+	                resize(d_out,			N_OUTPUT+2);
+	
+	-- Saturation for the output sum:
+	-- Keeps output_sum's N_OUTPUT LSBs
+	-- data_out = saturate(output_sum)
+	-- 1 clock cycle of delay
+    data_out_saturation: entity work.resize_with_saturation
 	GENERIC MAP (
 		N_INPUT => N_OUTPUT+2,
 		N_OUTPUT => N_OUTPUT
@@ -380,7 +442,7 @@ begin
 	PORT MAP (
           clk => clk,
 	      synchronous_clear => synchronous_clear,
-          data_in => std_logic_vector(output_sum),
+          data_in => output_sum,
           railed_positive => sum_railed_positive,
           railed_negative => sum_railed_negative,
           data_out => data_out
@@ -392,8 +454,10 @@ begin
 	process (clk)
 	begin
 		if rising_edge(clk) then
-			saturated_high_internal <= (sum_railed_positive or p_railed_positive or i_railed_positive or ii_railed_positive or d_railed_positive or second_stage_railed_positive);
-			saturated_low_internal 	<=	(sum_railed_negative or p_railed_negative or i_railed_negative or ii_railed_negative or d_railed_negative or second_stage_railed_negative);
+			saturated_high_internal <= (sum_railed_positive or p_railed_positive or i_railed_positive
+			                            or ii_railed_positive or d_railed_positive or ii_1st_stage_railed_positive);
+			saturated_low_internal 	<= (sum_railed_negative or p_railed_negative or i_railed_negative
+			                            or ii_railed_negative or d_railed_negative or ii_1st_stage_railed_negative);
 			-- extra register stage:
 			saturated_high	 <= saturated_high_internal;
 			saturated_low	 <= saturated_low_internal;

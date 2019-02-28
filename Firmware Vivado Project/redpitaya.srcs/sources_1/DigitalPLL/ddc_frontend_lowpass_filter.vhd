@@ -52,30 +52,30 @@ entity ddc_frontend_lowpass_filter is
 		rst           : in  std_logic;
 		clk           : in  std_logic;
 		clk_times_N   : in  std_logic;
-		data_input    : in  std_logic_vector (INPUT_SIZE-1 downto 0);
-		filter_select : in  std_logic_vector(1 downto 0);
-		data_output   : out std_logic_vector (INPUT_SIZE-1 downto 0)
+		data_input    : in  signed(INPUT_SIZE-1 downto 0);
+		filter_select : in  std_logic_vector(2-1 downto 0);
+		data_output   : out signed(INPUT_SIZE-1 downto 0)
 
 	);
 end ddc_frontend_lowpass_filter;
 
 architecture Behavioral of ddc_frontend_lowpass_filter is
 	-- intermediate signals for the wideband filter
-	signal data_interm1 : std_logic_vector(INPUT_SIZE+2-1 downto 0) := (others => '0');
-	signal data_interm2 : std_logic_vector(INPUT_SIZE+3-1 downto 0) := (others => '0');
-	signal data_interm3 : std_logic_vector(INPUT_SIZE+4-1 downto 0) := (others => '0');
+	signal data_interm1 : signed(INPUT_SIZE+2-1 downto 0) := (others => '0');
+	signal data_interm2 : signed(INPUT_SIZE+3-1 downto 0) := (others => '0');
+	signal data_interm3 : signed(INPUT_SIZE+4-1 downto 0) := (others => '0');
 	
 	-- signals for the narrowband filter (16 pts boxcar)
 	constant LOG2_MAXIMUM_SIZE_16_PTS : integer := 5;
 	constant N_16_PTS : std_logic_vector(LOG2_MAXIMUM_SIZE_16_PTS-1 downto 0) := std_logic_vector(to_unsigned(16, LOG2_MAXIMUM_SIZE_16_PTS));
-	signal data_narrowband : std_logic_vector(16+5+2-1 downto 0);
+	signal data_narrowband : signed(16+5+2-1 downto 0);
 	
 	
 	
 	-- signals for the minimum phase FIR:
-	signal data_to_fir_wide : std_logic_vector(17-1 downto 0) := (others => '0');
-	signal data_to_fir : std_logic_vector(16-1 downto 0) := (others => '0');
-	signal data_fir : std_logic_vector(16-1 downto 0) := (others => '0');
+	signal data_to_fir_wide : signed(17-1 downto 0) := (others => '0');
+	signal data_to_fir : signed(16-1 downto 0) := (others => '0');
+	signal data_fir : signed(16-1 downto 0) := (others => '0');
 	COMPONENT ddc_minimum_phase_fir
     PORT (
         aclk : IN STD_LOGIC;
@@ -90,7 +90,7 @@ architecture Behavioral of ddc_frontend_lowpass_filter is
 	
 	
 	-- selects between the two filters and also cancels the filter gain:
-	signal data_output_register : std_logic_vector(INPUT_SIZE-1 downto 0) := (others => '0');
+	signal data_output_register : signed(INPUT_SIZE-1 downto 0) := (others => '0');
 	-- Divides the output of the filter by 2^BIT_SHIFT_AFTER_FILTER to keep gain approximately equal to 1.
 	constant BIT_SHIFT_AFTER_WIDEBAND_FILTER : positive := 4;
 	constant BIT_SHIFT_AFTER_NARROWBAND_FILTER : positive := 2+4;
@@ -178,11 +178,11 @@ begin
 			if filter_select = b"00" then
 				-- wideband filter
 				-- Cancel filter gain.  We add half an LSB before dividing in order to round the result instead of truncating:
-				data_output_register <= std_logic_vector(resize(shift_right(signed(data_interm3) + to_signed(2**(BIT_SHIFT_AFTER_WIDEBAND_FILTER-1), data_interm3'length), BIT_SHIFT_AFTER_WIDEBAND_FILTER), data_output_register'length));
+				data_output_register <= resize(shift_right(signed(data_interm3) + to_signed(2**(BIT_SHIFT_AFTER_WIDEBAND_FILTER-1), data_interm3'length), BIT_SHIFT_AFTER_WIDEBAND_FILTER), data_output_register'length);
 			elsif filter_select = b"01" then
 				-- narrowband filter
 				-- Cancel filter gain.  We add half an LSB before dividing in order to round the result instead of truncating:
-				data_output_register <= std_logic_vector(resize(shift_right(signed(data_narrowband) + to_signed(2**(BIT_SHIFT_AFTER_NARROWBAND_FILTER-1), data_interm3'length), BIT_SHIFT_AFTER_NARROWBAND_FILTER), data_output_register'length));
+				data_output_register <= resize(shift_right(signed(data_narrowband) + to_signed(2**(BIT_SHIFT_AFTER_NARROWBAND_FILTER-1), data_interm3'length), BIT_SHIFT_AFTER_NARROWBAND_FILTER), data_output_register'length);
 			elsif filter_select = b"10" then
 				-- wideband, minimum-phase fir filter.
 				-- no need to cancel filter gain because it is done in the fir core

@@ -41,20 +41,20 @@ entity adjustable_boxcar_filter_v2 is
 		clk : in  STD_LOGIC;
 		
 		-- Input port
-		input_data : in std_logic_vector(DATA_WIDTH-1 downto 0);
+		input_data : in signed(DATA_WIDTH-1 downto 0);
 		
 		-- Configuration port.  A reset is necessary to update the filter length
 		filter_size : in std_logic_vector(LOG2_MAXIMUM_SIZE-1 downto 0);
 		
 		-- Output port
-		output_data : out std_logic_vector(DATA_WIDTH+LOG2_MAXIMUM_SIZE-1 downto 0)
+		output_data : out signed(DATA_WIDTH+LOG2_MAXIMUM_SIZE-1 downto 0)
 	);
 end adjustable_boxcar_filter_v2;
 
 architecture Behavioral of adjustable_boxcar_filter_v2 is
 	signal desired_delay_minus_one : std_logic_vector(12-1 downto 0) := (others => '0');
-	signal delayed_data : std_logic_vector(input_data'range) := (others => '0');
-	signal accumulator :  std_logic_vector(output_data'range) := (others => '0');
+	signal delayed_data : signed(input_data'range) := (others => '0');
+	signal accumulator :  signed(output_data'range) := (others => '0');
 begin
 
 
@@ -69,14 +69,14 @@ begin
 			 
 			 -- Input port
 			 input_clk_enable => '1',
-          data_in => input_data,
+          data_in => std_logic_vector(input_data),
 			 
 				-- Configuration port.  The actual delay will be desired_delay_minus_one_minus_one+1.
           desired_delay_minus_one => desired_delay_minus_one,
 			 
 			 -- Output port
 			 output_clk_enable => open,
-          data_out => delayed_data
+          signed(data_out) => delayed_data
         );
 	desired_delay_minus_one <= std_logic_vector(resize(unsigned(filter_size)-1, 12));
 		  
@@ -88,7 +88,7 @@ begin
 				accumulator <= (others => '0');
 			else
 				-- Uses modulo arithmetic, 'accumulator' size should handle all the necessary bit growth
-				accumulator <= std_logic_vector(signed(accumulator) + resize(signed(input_data), accumulator'length) - resize(signed(delayed_data), accumulator'length));
+				accumulator <= accumulator + resize(input_data, accumulator'length) - resize(delayed_data, accumulator'length);
 			end if;
 			
 		end if;
