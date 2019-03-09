@@ -2,7 +2,7 @@
 """
 June 2017
 
-Description: Provides a graphical user interface (GUI) to configure the RP 
+Description: Provides a graphical user interface (GUI) to configure the RP
 @author: Alex Tourigny-Plante
 """
 
@@ -23,8 +23,8 @@ from SuperLaserLand_JD_RP import SuperLaserLand_JD_RP
 class ConfigRPSettingsUI(Qt.QWidget):
     """docstring for ConfigRP"""
     def __init__(self, sl, sp, controller, custom_style_sheet='', custom_shorthand=''):
-        super(ConfigRPSettingsUI, self).__init__()  
-        print('ConfigRPSettingsUI::__init(): Entering')        
+        super(ConfigRPSettingsUI, self).__init__()
+        print('ConfigRPSettingsUI::__init(): Entering')
         self.sl = weakref.proxy(sl)
         self.sp = sp
         self.setObjectName('MainWindow')
@@ -39,7 +39,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
     def loadParameters(self):
         # Load the default parameters from the selected xml file (select by the devices_data dictionnary in the controller class)
         fan_state = int((self.sp.getValue('RP_settings', "Fan_state")))
-        mux_pll2 = int((self.sp.getValue('RP_settings', "PLL2_connection")))
+        mux_pll1 = int((self.sp.getValue('RP_settings', "PLL1_connection")))
         mux_vco = int((self.sp.getValue('VCO_settings', "VCO_connection")))
         vco_amplitude = float((self.sp.getValue('VCO_settings', "VCO_amplitude")))
         vco_offset = float((self.sp.getValue('VCO_settings', "VCO_offset")))
@@ -49,12 +49,12 @@ class ConfigRPSettingsUI(Qt.QWidget):
         else:
             self.qradio_fan_off.setChecked(True)
 
-        if mux_pll2 == 1:
-            self.qradio_ddc1_to_pll2.setChecked(True)
-        elif mux_pll2 == 2:
-            self.qradio_pll1_to_pll2.setChecked(True)
+        if mux_pll1 == 1:
+            self.qradio_ddc0_to_pll1.setChecked(True)
+        elif mux_pll1 == 2:
+            self.qradio_pll0_to_pll1.setChecked(True)
         else:
-            self.qradio_ddc2_to_pll2.setChecked(True)
+            self.qradio_ddc1_to_pll1.setChecked(True)
 
         if mux_vco == 1:
             self.qradio_VCO_to_DAC0.setChecked(True)
@@ -80,12 +80,12 @@ class ConfigRPSettingsUI(Qt.QWidget):
     def pushValues(self):
         # Send the values in the different fields to the RP
         self.mux_vco_Action()
-        self.mux_pll2_Action()
+        self.mux_pll1_Action()
         self.setInternalVCO_amplitude()
         self.setFan()
 
     def getValues(self):
-        #get value from the memory of the red pitaya 
+        #get value from the memory of the red pitaya
 
         #get value for the VCO connection
         mux_vco = self.sl.get_mux_vco()
@@ -108,15 +108,15 @@ class ConfigRPSettingsUI(Qt.QWidget):
         self.qedit_int_vco_offset.setText('{:.3f}'.format(offset))
         self.qedit_int_vco_offset.blockSignals(False)
 
-        #get value for the pll2 connection
-        mux_pll2 = self.sl.read_pll2_mux()
-        if mux_pll2 == 0:
-            self.qradio_ddc2_to_pll2.setChecked(True)
-        elif mux_pll2 == 1:
-            self.qradio_ddc1_to_pll2.setChecked(True)
-        elif mux_pll2 == 2:
-            self.qradio_pll1_to_pll2.setChecked(True)
-        
+        #get value for the pll1 connection
+        mux_pll1 = self.sl.pll[1].read_pll1_mux()
+        if mux_pll1 == 0:
+            self.qradio_ddc1_to_pll1.setChecked(True)
+        elif mux_pll1 == 1:
+            self.qradio_ddc0_to_pll1.setChecked(True)
+        elif mux_pll1 == 2:
+            self.qradio_pll0_to_pll1.setChecked(True)
+
 
 
     def initUI(self):
@@ -143,7 +143,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
         self.qedit_int_vco_offset.returnPressed.connect(self.setInternalVCO_offset)
         self.qedit_int_vco_offset.setMaximumWidth(60)
 
-        MUX_vco.addWidget(self.qradio_VCO_to_DAC0,     0, 0)    
+        MUX_vco.addWidget(self.qradio_VCO_to_DAC0,     0, 0)
         MUX_vco.addWidget(self.qradio_VCO_to_DAC1,     1, 0)
         MUX_vco.addWidget(self.qradio_no_VCO,          2, 0)
         MUX_vco.addWidget(self.qlabel_int_vco_offset, 1,1)
@@ -156,24 +156,24 @@ class ConfigRPSettingsUI(Qt.QWidget):
         self.qgroupbox_MUX_vco.setLayout(MUX_vco)
 
         ###################################################################################
-        self.qgroupbox_MUX_pll2 = Qt.QGroupBox('Select connection to PLL 2')
-        self.qgroupbox_MUX_pll2.setAutoFillBackground(True)
-        MUX_pll2 = Qt.QGridLayout()
+        self.qgroupbox_MUX_pll1 = Qt.QGroupBox('Select connection to PLL 1')
+        self.qgroupbox_MUX_pll1.setAutoFillBackground(True)
+        MUX_pll1 = Qt.QGridLayout()
 
-        self.qradio_ddc1_to_pll2 = Qt.QRadioButton('DDC_a output to PLL_b input')
-        self.qradio_pll1_to_pll2 = Qt.QRadioButton('PLL_a output to PLL_b input')
-        self.qradio_ddc2_to_pll2 = Qt.QRadioButton('DDC_b output to PLL_b input')
-        self.qradio_ddc2_to_pll2.setChecked(True)
-        self.qradio_pll1_to_pll2.clicked.connect(self.mux_pll2_Action)
-        self.qradio_ddc1_to_pll2.clicked.connect(self.mux_pll2_Action)
-        self.qradio_ddc2_to_pll2.clicked.connect(self.mux_pll2_Action)
+        self.qradio_ddc0_to_pll1 = Qt.QRadioButton('DDC_0 output to PLL_1 input')
+        self.qradio_pll0_to_pll1 = Qt.QRadioButton('PLL_0 output to PLL_1 input')
+        self.qradio_ddc1_to_pll1 = Qt.QRadioButton('DDC_1 output to PLL_1 input')
+        self.qradio_ddc1_to_pll1.setChecked(True)
+        self.qradio_pll0_to_pll1.clicked.connect(self.mux_pll1_Action)
+        self.qradio_ddc0_to_pll1.clicked.connect(self.mux_pll1_Action)
+        self.qradio_ddc1_to_pll1.clicked.connect(self.mux_pll1_Action)
 
-        MUX_pll2.addWidget(self.qradio_ddc1_to_pll2,     0, 0)
-        MUX_pll2.addWidget(self.qradio_pll1_to_pll2,     1, 0)
-        MUX_pll2.addWidget(self.qradio_ddc2_to_pll2,     2, 0)
-        MUX_pll2.setRowStretch(2, 0)
+        MUX_pll1.addWidget(self.qradio_ddc0_to_pll1,     0, 0)
+        MUX_pll1.addWidget(self.qradio_pll0_to_pll1,     1, 0)
+        MUX_pll1.addWidget(self.qradio_ddc1_to_pll1,     2, 0)
+        MUX_pll1.setRowStretch(2, 0)
 
-        self.qgroupbox_MUX_pll2.setLayout(MUX_pll2)
+        self.qgroupbox_MUX_pll1.setLayout(MUX_pll1)
 
 
         ###################################################################################
@@ -229,13 +229,13 @@ class ConfigRPSettingsUI(Qt.QWidget):
 
 
         ###################################################################################
-            
+
         self.group = Qt.QGroupBox('RP configuration')
         self.group.setAutoFillBackground(True)
         group = Qt.QGridLayout()
 
         group.addWidget(self.qgroupbox_MUX_vco, 0, 0, 2, 4)
-        group.addWidget(self.qgroupbox_MUX_pll2, 3, 0, 2, 4)
+        group.addWidget(self.qgroupbox_MUX_pll1, 3, 0, 2, 4)
         group.addWidget(self.qgroupbox_read_data, 6, 0, 2, 4)
         group.addWidget(self.qgroupbox_fanUI, 8, 0, 1, 1)
         group.addWidget(self.qbtn_reconnect, 8, 1, 1, 2)
@@ -250,7 +250,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
 
 
         #self.center()
-        self.setWindowTitle(self.custom_shorthand + ': RP Configuration')    
+        self.setWindowTitle(self.custom_shorthand + ': RP Configuration')
         #self.show()
         #self.show()
 
@@ -263,20 +263,20 @@ class ConfigRPSettingsUI(Qt.QWidget):
         self.qedit_data.blockSignals(True)
         self.qedit_data.setText(value)
         self.qedit_data.blockSignals(False)
-    
+
         # bus_address = (2 << 20) + 0x9001*4
         # value = str(self.sl.dev.read_Zynq_register_uint32(bus_address))
         # print(value)
 
         # bus_address = (2 << 20) + 0x9000*4
         # value = str(self.sl.dev.read_Zynq_register_uint32(bus_address))
-        # print(value)        
+        # print(value)
 
 
     def communication_menu(self):
         # Open the initial menu in which we select the RP and if we want to reconnect to one. We can open a new connection without closing the GUI
         self.controller.connectionGUI()
-        
+
 
     def center(self):
         qr = self.frameGeometry()
@@ -307,7 +307,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
             int_vco_offset = 0.0
         if int_vco_offset < -1.0 or int_vco_offset > 1.0:
             int_vco_offset = 0.0
-        
+
         self.sl.set_internal_VCO_offset(int_vco_offset)
 
     def setInternalVCO_amplitude(self):
@@ -320,20 +320,20 @@ class ConfigRPSettingsUI(Qt.QWidget):
             self.qedit_int_vco_amplitude.blockSignals(True)
             self.qedit_int_vco_amplitude.setText('{:.3f}'.format(int_vco_amplitude))
             self.qedit_int_vco_amplitude.blockSignals(False)
-        
+
         self.sl.set_internal_VCO_amplitude(int_vco_amplitude)
-      
-    def mux_pll2_Action(self):
-        if self.qradio_ddc1_to_pll2.isChecked():
+
+    def mux_pll1_Action(self):
+        if self.qradio_ddc0_to_pll1.isChecked():
             data = 1
-        elif self.qradio_pll1_to_pll2.isChecked():
+        elif self.qradio_pll0_to_pll1.isChecked():
             data = 2
-        else: #self.qradio_ddc2_to_pll2.isChecked()
+        else: #self.qradio_ddc1_to_pll1.isChecked()
             data = 0
-        self.sl.set_mux_pll2(data)
+        self.sl.pll[1].set_mux_pll1(data)
 
 
-    
+
 if __name__ == '__main__':
 
     #app = QApplication(sys.argv)

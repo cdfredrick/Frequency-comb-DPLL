@@ -2487,10 +2487,16 @@
       }
     },
     "interface_nets": {
-      "axi_protocol_converter_0_M_AXI": {
+      "Vaux9_1": {
         "interface_ports": [
-          "axi_protocol_converter_0/M_AXI",
-          "xadc/s_axi_lite"
+          "Vaux9",
+          "xadc/Vaux9"
+        ]
+      },
+      "Vp_Vn_1": {
+        "interface_ports": [
+          "Vp_Vn",
+          "xadc/Vp_Vn"
         ]
       },
       "processing_system7_0_M_AXI_GP1": {
@@ -2511,6 +2517,12 @@
           "processing_system7/DDR"
         ]
       },
+      "axi_protocol_converter_0_M_AXI": {
+        "interface_ports": [
+          "axi_protocol_converter_0/M_AXI",
+          "xadc/s_axi_lite"
+        ]
+      },
       "processing_system7_0_M_AXI_GP0": {
         "interface_ports": [
           "M_AXI_GP0",
@@ -2529,34 +2541,22 @@
           "xadc/Vaux0"
         ]
       },
-      "Vaux1_1": {
-        "interface_ports": [
-          "Vaux1",
-          "xadc/Vaux1"
-        ]
-      },
       "Vaux8_1": {
         "interface_ports": [
           "Vaux8",
           "xadc/Vaux8"
         ]
       },
+      "Vaux1_1": {
+        "interface_ports": [
+          "Vaux1",
+          "xadc/Vaux1"
+        ]
+      },
       "s_axi_hp1_1": {
         "interface_ports": [
           "S_AXI_HP1",
           "processing_system7/S_AXI_HP1"
-        ]
-      },
-      "Vaux9_1": {
-        "interface_ports": [
-          "Vaux9",
-          "xadc/Vaux9"
-        ]
-      },
-      "Vp_Vn_1": {
-        "interface_ports": [
-          "Vp_Vn",
-          "xadc/Vp_Vn"
         ]
       }
     },

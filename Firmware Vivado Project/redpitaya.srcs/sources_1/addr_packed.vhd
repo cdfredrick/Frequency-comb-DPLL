@@ -34,35 +34,23 @@ component FIFO_addr_packed is
 	  );
 end component;
 
-component FSM_addr_packed  is
-    port (
-            clk				: in  std_logic; 						-- Clock
-            rst 			: in  std_logic; 						-- Reset (active low)
-            read_fifo       : out std_logic; 						-- pulse to read data from fifo
-            data_in			: in  std_logic_vector(64-1 downto 0);	-- Data input from FIFO
-            sys_ren 		: in  std_logic; 						-- read pulse --if computer want to read data
-            addrAsk			: in  std_logic_vector(32-1 downto 0);	-- Addr at which the computer want to read
-            FIFO_empty		: in  std_logic; 						-- 1 if FIFO is empty
-            data_out		: out std_logic_vector(32-1 downto 0); 	-- Data to send to the computer
-            sys_err			: out std_logic;						-- Error indicator
-            ack 			: out std_logic 						-- Ack to send to the computer
-        );
-end component;
-
 signal read_fifo : STD_LOGIC := '0';
 signal data_exchange : std_logic_vector (64-1 downto 0) := (others => '0');
 signal fifo_empty : STD_LOGIC := '1';
 
-
+signal nrst : STD_LOGIC := '0';
+signal data_in : std_logic_vector (64-1 downto 0) := (others => '0');
 
 begin
 
+nrst <= not(rst);
+data_in <= sys_addr & sys_wdata;
 
 FIFO_inst : FIFO_addr_packed
 port map (
 			clk 	=> clk,
-		    srst 	=> not(rst),
-		    din 	=> sys_addr & sys_wdata,
+		    srst 	=> nrst,
+		    din 	=> data_in,
 		    wr_en 	=> sys_wen,
 		    rd_en 	=> read_fifo,
 		    dout 	=> data_exchange,
@@ -72,7 +60,7 @@ port map (
 	);
 
 
-FSM_inst : FSM_addr_packed
+FSM_inst : entity work.FSM_addr_packed
 port map (
 			clk 		=> clk,
 			rst 		=> rst,
@@ -87,5 +75,6 @@ port map (
 	);
 
 out_empty <= fifo_empty;
+
 
 end;

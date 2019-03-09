@@ -84,10 +84,10 @@ begin
     );
 
 	-- FSM process example
-	data_ram_sys_addr  <= read_ram_data(48-1+2 downto 34);
+	data_ram_sys_addr  <= read_ram_data((48+2)-1 downto 32+2);
 	data_ram_sys_data <= read_ram_data(32-1 downto 0);
 
-	sys_addr_to_save <= data_in (48-1+2 downto 34);
+	sys_addr_to_save <= data_in ((48+2)-1 downto 32+2);
 
 	-------------------------------------------------------------------
 	-- Finite State Machine (FSM)
@@ -209,8 +209,8 @@ begin
         --ack <= sys_ren;
         sys_err <= '0';
         if sys_ren='1' then
-           	wanted_sys_addr <= addrAsk(16-1+2 downto 2);
-            if (addrAsk(16-1+2 downto 2) < x"0025") or (x"0040" < addrAsk(16-1+2 downto 2)) then
+           	wanted_sys_addr <= addrAsk((16+2)-1 downto 2);
+            if (addrAsk((16+2)-1 downto 2) < x"0025") or (x"0040" < addrAsk((16+2)-1 downto 2)) then
                 computer_want_data <= '1';
             end if;
         elsif searching_data = '1' then

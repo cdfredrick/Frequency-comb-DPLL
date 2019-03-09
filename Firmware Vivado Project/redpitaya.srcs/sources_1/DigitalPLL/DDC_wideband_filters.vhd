@@ -107,10 +107,13 @@ architecture Behavioral of DDC_wideband_filters is
     signal DDS_sine_tmp     : signed(INPUT_DATA_WIDTH-1 downto 0);
     signal DDS_cosine       : signed(INPUT_DATA_WIDTH-1 downto 0);
     signal DDS_sine         : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal DDS_cosine_reg       : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal DDS_sine_reg         : signed(INPUT_DATA_WIDTH-1 downto 0);
     
     -- High-pass filter signals:
     signal data_input_to_mult       : signed(INPUT_DATA_WIDTH-1 downto 0);
     signal data_input_highpassed    : signed(INPUT_DATA_WIDTH-1 downto 0);
+    signal data_input_to_mult_reg   : signed(INPUT_DATA_WIDTH-1 downto 0);
 
     -- Multipliers output signals 
     constant BIT_SHIFT_AFTER_MULT   : positive := 15;    -- Divides the output of the filter by 2^BIT_SHIFT_AFTER_FILTER to keep gain approximately equal to 1.  Note that the filter has a DC gain equal to its length, while the product by cos has a gain of 1/2, so this value should be approx= log2(boxcar_filter_size/2)
@@ -207,23 +210,31 @@ begin
             data_input_to_mult <= data_input_highpassed;
         end if;
     end process;
-            
+    
+    process (clk) -- register added for timing closure
+	begin
+		if rising_edge(clk) then
+			data_input_to_mult_reg <= data_input_to_mult;
+			DDS_cosine_reg <= DDS_cosine;
+			DDS_sine_reg <= DDS_sine;
+		end if;
+	end process;
             
 -- Multiply with input signal and truncate
     --Note that these multipliers truncate the output to cancel the 2^15 gain from the amplitude of the LO cos and sin
     input_multiplier_I : input_multiplier
     PORT MAP (
         clk => clk,
-        a   => data_input_to_mult,
-        b   => DDS_cosine,
+        a   => data_input_to_mult_reg,
+        b   => DDS_cosine_reg,
         p   => input_times_cos_wide
     );
 
     input_multiplier_Q : input_multiplier
     PORT MAP (
         clk => clk,
-        a   => data_input_to_mult,
-        b   => DDS_sine,
+        a   => data_input_to_mult_reg,
+        b   => DDS_sine_reg,
         p   => input_times_sin_wide
     );
 
