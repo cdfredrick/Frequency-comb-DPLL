@@ -38,11 +38,12 @@ entity PLL_loop_filters_with_saturation is
 	Generic (
 		-- Constants which control the scaling:
 		-- Each branch's output is divided by 2^N
-		N_DIVIDE_P 	: integer := 10;      -- log2(max_freq_err * min_p_gain), minimum output with maximum error and minimum gain
-		N_DIVIDE_I 	: integer := 33;      -- log2(max_freq_err * max_i_gain * 1us * 125MHz) - 16, saturation in 1us with maximum error and maximum gain
-		N_DIVIDE_II : integer := 59;      -- log2(max_freq_err * max_ii_gain * 0.5*(1ms * 125MHz)**2) - 16, saturation in 1ms with maximum error and maximum gain
-        N_DIVIDE_D  : integer := 11;      -- log2(max_freq_err_derivative * min_d_gain) - (18 + 3), minimum output with maximum error and minimum gain
-		N_OUTPUT 	: integer := 16
+		N_OUTPUT 	: integer := 16;    -- Division coeficients chosen to allow reaching maximal response, 
+		                                  --i.e. it is possible at max gain for the smallest error to rail in one clock cycle. 
+		N_DIVIDE_P 	: integer := 16;    -- N = log2(min_err * max_p_gain) - log2(max_output)
+		N_DIVIDE_I 	: integer := 48;    -- N = log2(min_err * max_i_gain) - log2(max_output) 
+		N_DIVIDE_II : integer := 48;    -- N = log2(min_err * max_ii_gain) - log2(max_output)
+        N_DIVIDE_D  : integer := 0      -- N = log2(min_err * max_d_gain) - log2(max_output) - N_COEF_DF - 3 = -5, max unattainable
 	);
     Port (
 		clk             : in  std_logic;
@@ -50,10 +51,11 @@ entity PLL_loop_filters_with_saturation is
 		gain_changed    : in  std_logic;
 		data_in         : in  signed(10-1 downto 0);
 		gain_p          : in  signed(32-1 downto 0);
-		gain_i          : in  signed(32-1 downto 0);
-		gain_ii         : in  signed(32-1 downto 0);
+		gain_i          : in  signed(64-1 downto 0);
+		gain_ii         : in  signed(64-1 downto 0);
 		gain_d          : in  signed(32-1 downto 0);
 		coef_d_filter   : in  signed(18-1 downto 0);
+		offset_in       : in  signed(N_OUTPUT-1 downto 0);
 		phase_residuals : out signed(32-1 downto 0);
 		data_out        : out signed(N_OUTPUT-1 downto 0);
 		saturated_low   : out std_logic;
@@ -87,9 +89,23 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 		p    : out signed(64-1 downto 0));
 	end component;
 	
+	-- Multiplier, 10x64 input bits, 74 output bits, synchronous clear
+	-- 6 clock cycles of delay
+	COMPONENT pll_10x64_mult
+    PORT (
+        clk : IN STD_LOGIC;
+        a : IN signed(10-1 DOWNTO 0);
+        b : IN signed(64-1 DOWNTO 0);
+        sclr : IN STD_LOGIC;
+        p : OUT signed(74-1 DOWNTO 0)
+      );
+    END COMPONENT;
+	
 	
 	-- Internal variables
 	-----------------------------------------------------------------------
+	constant no_clear : std_logic := '0';
+	
 	-- Phase residuals monitor
 	constant N_BITS_PHASE_RESULT   : integer := 32;
 	signal phase_error_accumulator : signed(N_BITS_PHASE_RESULT-1 downto 0) := (others => '0');
@@ -104,16 +120,19 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 	signal p_railed_positive, p_railed_negative    : std_logic := '0';
 	
 	-- I branch signals
-	signal i_mult_out                              : signed(42-1 downto 0) := (others => '0');
+	signal i_mult_out                              : signed(74-1 downto 0) := (others => '0');
+	signal i_offset_in                             : signed((N_OUTPUT+N_DIVIDE_I)-1 downto 0) := (others => '0');
 	signal i_accumulator_out                       : signed((N_OUTPUT+N_DIVIDE_I)-1 downto 0) := (others => '0');
 	signal i_railed_positive, i_railed_negative    : std_logic := '0';
 	signal i_accumulator_divided                   : signed((i_accumulator_out'length-N_DIVIDE_I)-1 downto 0) := (others => '0');
 	signal i_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
 
 	-- II branch signals
-	signal ii_mult_out                                                 : signed(42-1 downto 0) := (others => '0');
+	signal ii_mult_out                                                 : signed(74-1 downto 0) := (others => '0');
+	signal ii_1st_stage_offset_in                                      : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
 	signal ii_1st_stage_accumulator_out                                : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
 	signal ii_1st_stage_railed_positive, ii_1st_stage_railed_negative  : std_logic := '0';
+	signal ii_2nd_stage_offset_in                                      : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
 	signal ii_2nd_stage_accumulator_out                                : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
 	signal ii_railed_positive, ii_railed_negative                      : std_logic := '0';
 	signal ii_2nd_stage_accumulator_divided                            : signed((ii_2nd_stage_accumulator_out'length-N_DIVIDE_II)-1 downto 0) := (others => '0');
@@ -121,11 +140,11 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 	
     -- D branch signals
     -- signal data_in_dly : std_logic_vector(9 downto 0) := (others => '0');
-	signal d_filt_in                               : signed(14-1 downto 0)       := (others => '0');
+	signal d_in                                    : signed(14-1 downto 0)       := (others => '0');
+	signal d_in_dly                                : signed(14-1 downto 0)       := (others => '0');
+	signal d_diff                                  : signed(14-1 downto 0)       := (others => '0');
 	signal d_filt_out                              : signed(32-1 downto 0)       := (others => '0');
-	signal d_filt_out_dly                          : signed(32-1 downto 0)       := (others => '0');
-	signal data_diff                               : signed(32-1 downto 0)       := (others => '0');
-	signal d_mult_out                           : signed(64-1 downto 0)       := (others => '0');
+	signal d_mult_out                              : signed(64-1 downto 0)       := (others => '0');
 	signal d_mult_divided                          : signed((64-18-3-N_DIVIDE_D)-1 downto 0)       := (others => '0');
 	signal d_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
 	signal d_railed_positive, d_railed_negative    : std_logic := '0';
@@ -135,7 +154,7 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 	signal sum_railed_negative, sum_railed_positive        : std_logic := '0'; -- this is used for the anti-windup behavior (we stop integrating if the sum is railed, even if the integrator isn't)
 	
 	-- Flags which indicate internal state
-	signal synchronous_clear                               : std_logic := '0'; -- resets everything, asserted when either gain_changed = '1' or lock = '0'
+	signal synchronous_clear                               : std_logic := '0'; -- resets everything, asserted when either or lock = '0'
 	signal saturated_high_internal, saturated_low_internal : std_logic := '0'; -- indicates to the external world when one of the internal signal is saturated
 
 
@@ -227,16 +246,15 @@ begin
 	-- Integrator branch
 	----------------------------------------------------------------
 	-- ***describe***
-	-- Multiplier, i_mult_output = gain_i * phase_error_accumulator (exact integer arithmetic, 32x32 = 64 bits result)
 	--
 	-- i_out = saturate(cumsum(data_in*gain_i))/2^N_DIVIDE_I
-	-- 5 total clock cycles of delay
+	-- 8 total clock cycles of delay
 	
 	-- Multiplication of data_in by gain_i:
-	-- 10x32 multiplier, output is 42 bits
+	-- 10x64 multiplier, output is 74 bits
 	-- i_mult_out = data_in*gain_i
-	-- 4 clock cycles of delay
-	pll_mult_i : pll_10x32_mult
+	-- 6 clock cycles of delay
+	pll_mult_i : pll_10x64_mult
 	port map (
 		clk               => clk,
 		a                 => data_in,
@@ -248,7 +266,9 @@ begin
     -- Integration of i_mult_out with saturation and anti-windup:
     -- Output saturates at (N_OUTPUT+N_DIVIDE_I) bits
     -- i_accumulator_out = saturate(cumsum(i_mult_out))
-    -- 1 clock cycle of delay
+    -- 2 clock cycle of delay
+    i_offset_in <= shift_left(resize(offset_in, i_accumulator_out'length), N_DIVIDE_I);
+    
 	i_integrator_saturation : entity work.integrator_with_saturation
 	generic map (
 		N_INPUT => i_mult_out'length,
@@ -259,6 +279,7 @@ begin
 		railed_positive     => sum_railed_positive,
 		railed_negative     => sum_railed_negative,
 		data_in             => i_mult_out,
+		initial_offset      => i_offset_in,
 		data_out            => i_accumulator_out,
 		railed_positive_out => i_railed_positive,
 		railed_negative_out => i_railed_negative
@@ -277,13 +298,13 @@ begin
 	-- We use the phase_error_accumulator result, scale the result, then accumulate again, and finally divide by N_DIVIDE_II.
 	--
 	-- gain_ii/2^N_DIVIDE_II * cumsum(cumsum(data_in))
-	-- 6 total clock cycles of delay
+	-- 10 total clock cycles of delay
 	
 	-- Multiplication of data_in by gain_ii:
-	-- 10x32 multiplier, output is 42 bits
+	-- 10x64 multiplier, output is 74 bits
 	-- ii_mult_out = data_in*gain_ii
-	-- 4 clock cycles of delay
-	pll_mult_ii : pll_10x32_mult
+	-- 6 clock cycles of delay
+	pll_mult_ii : pll_10x64_mult
 	port map (
 		clk               => clk,
 		a                 => data_in,
@@ -295,7 +316,7 @@ begin
     -- 1st stage integration of ii_mult_out with saturation and anti-windup:
     -- Output saturates at (N_OUTPUT+N_DIVIDE_II) bits
     -- ii_1st_stage_accumulator_out = saturate(cumsum(ii_mult_out))
-    -- 1 clock cycle of delay
+    -- 2 clock cycle of delay
 	ii_1st_stage_integrator_saturation : entity work.integrator_with_saturation
 	generic map (
 		N_INPUT => ii_mult_out'length,
@@ -306,6 +327,7 @@ begin
 		railed_positive     => ii_railed_positive,
 		railed_negative     => ii_railed_negative,
 		data_in             => ii_mult_out,
+		initial_offset      => ii_1st_stage_offset_in,
 		data_out            => ii_1st_stage_accumulator_out,
 		railed_positive_out => ii_1st_stage_railed_positive,
 		railed_negative_out => ii_1st_stage_railed_negative
@@ -314,7 +336,7 @@ begin
 	-- 2nd stage integration of ii_mult_out with saturation and anti-windup:
     -- Output saturates at (N_OUTPUT+N_DIVIDE_II) bits
     -- ii_2nd_stage_accumulator_out = saturate(cumsum(ii_1st_stage_accumulator_out))
-    -- 1 clock cycle of delay
+    -- 2 clock cycle of delay
 	ii_2nd_stage_integrator_saturation : entity work.integrator_with_saturation
 	generic map (
 		N_INPUT => ii_1st_stage_accumulator_out'length,
@@ -325,6 +347,7 @@ begin
 		railed_positive     => sum_railed_positive,
 		railed_negative     => sum_railed_negative,
 		data_in             => ii_1st_stage_accumulator_out,
+		initial_offset      => ii_2nd_stage_offset_in,
 		data_out            => ii_2nd_stage_accumulator_out,
 		railed_positive_out => ii_railed_positive,
 		railed_negative_out => ii_railed_negative
@@ -345,43 +368,43 @@ begin
     -- 12 total clock cycles of delay
     
     -- Rescale data_in for input into the exponential filter:
-    -- Output is 14 bits
-    -- d_filt_in = data_in * 2^3
+    -- Output is 14 bits (1 extra bit to hold unwrapped differences)
+    -- d_in = data_in * 2^3
     -- 0 clock cycles of delay
-    d_filt_in <= shift_left(resize(data_in, d_filt_in'length), 3);
+    d_in <= shift_left(resize(data_in, d_in'length), 3);
+    
+    -- Differentiate d_filt_out:
+    -- Output is 32 bits
+    -- d_diff = d_in - d_in_dly
+    -- 1 clock cycle of delay
+    process (clk) is
+    begin
+        if rising_edge(clk) then
+            d_in_dly <= d_in;
+            d_diff <= d_in - d_in_dly;
+        end if;
+    end process;
     
     -- Exponential filter of data_in:
     -- Output is 32 bits
-    -- d_filt_out = d_filt_out + coef_d_filter * (d_filt_in - d_filt_out)
+    -- d_filt_out = d_filt_out + coef_d_filter * (d_diff - d_filt_out)
     -- 4 clock cycles of delay
     IIR_LPF_inst : entity work.IIR_LPF_14to32
     port map (
         clk      => clk,
         coef     => coef_d_filter,
-        data_in  => d_filt_in,
+        data_in  => d_diff,
         data_out => d_filt_out
     );
     
-    -- Differentiate d_filt_out:
-    -- Output is 32 bits
-    -- data_diff = d_filt_out - d_filt_out_dly
-    -- 1 clock cycle of delay
-    process (clk) is
-    begin
-        if rising_edge(clk) then
-            d_filt_out_dly <= d_filt_out;
-            data_diff <= d_filt_out - d_filt_out_dly;
-        end if;
-    end process;
-    
     -- Multiplication of data_diff by gain_d:
     -- 32x32 multiplier, output is 64 bits
-    -- d_mult_out = data_diff * gain_d
+    -- d_mult_out = d_filt_out * gain_d
     -- 6 clock cycle of delay
     pll_mult_d : pll_32x32_mult
     port map (
         clk  => clk,
-        a    => data_diff,
+        a    => d_filt_out,
         b    => gain_d,
         sclr => synchronous_clear,
         p    => d_mult_out
@@ -441,7 +464,7 @@ begin
 	)
 	PORT MAP (
           clk => clk,
-	      synchronous_clear => synchronous_clear,
+	      synchronous_clear => no_clear,
           data_in => output_sum,
           railed_positive => sum_railed_positive,
           railed_negative => sum_railed_negative,

@@ -45,6 +45,7 @@ entity integrator_with_saturation is
         railed_positive : in  STD_LOGIC;
         railed_negative : in  STD_LOGIC;
         data_in : in  signed(N_INPUT-1 downto 0);
+        initial_offset : in signed(N_OUTPUT-1 downto 0);
         data_out : out  signed(N_OUTPUT-1 downto 0);
         railed_positive_out : out std_logic;
         railed_negative_out : out std_logic
@@ -56,6 +57,7 @@ architecture Behavioral of integrator_with_saturation is
 	-----------------------------------------------------------------------
 	constant N_BITS_TEMP : integer := MAX_local(data_in'length, N_OUTPUT)+1;	-- the extra bit is to hold the full, unwrapped result
 	signal accumulator : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal temp_sum : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
 	
 	constant ACCUM_MAX : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(1, N_BITS_TEMP), N_OUTPUT-1)-1;	   -- (2^(N_OUTPUT-1)-1)
 	constant ACCUM_MIN : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(-1, N_BITS_TEMP), N_OUTPUT-1)+1;   -- (-2**(N_OUTPUT-1)+1), avoid the "most negative number"
@@ -69,10 +71,21 @@ begin
 	-- ***describe***
 	--
 	-- data_out = saturate(cumsum(data_in))
-	-- 1 total clock cycle of delay
+	-- 2 total clock cycle of delay
+
+    process (clk)
+    begin
+        if rising_edge(clk) then
+            if sclr = '1' then
+                temp_sum <= resize(initial_offset, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
+            else
+                -- Compute the full, unwrapped result (hence the extra bit compared to the biggest operand - see definition of N_BITS_TEMP)				
+				temp_sum <= resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
+			end if;
+		end if;
+	end process;
 
 	process (clk)
-		variable temp_sum : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
 	begin
 		if rising_edge(clk) then
 			-- We have three posibilities:
@@ -81,14 +94,10 @@ begin
 				-- We reset the integrator
 			if sclr = '1' then
 				-- reset state:
-				accumulator <= (others => '0');
+				accumulator <= initial_offset;
 				railed_positive_out <= '0';
 				railed_negative_out <= '0';
 			else
-			
-				-- Compute the full, unwrapped result (hence the extra bit compared to the biggest operand - see definition of N_BITS_TEMP)				
-				temp_sum := resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
-				
 				-- Only assign the result if it won't cause overflow,
 				-- and we also don't integrate if the signal chain is railed further downstream (anti-windup behavior)
 				if temp_sum > ACCUM_MAX or (railed_positive = '1' and data_in>0) then

@@ -21,9 +21,11 @@ class Loop_filters_module(object):
         # Proportional Gain Register Address
         self.gain_p_addr = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_P
         # Integral Gain Register Address
-        self.gain_i_addr = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_I
+        self.gain_i_addr_lsbs = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_I_LSBs
+        self.gain_i_addr_msbs = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_I_MSBs
         # Double Integral Gain Register Address
-        self.gain_ii_addr = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_II
+        self.gain_ii_addr_lsbs = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_II_LSBs
+        self.gain_ii_addr_msbs = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_II_MSBs
         # Derivative Gain Register Address
         self.gain_d_addr = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_D
         # Derivative Filter Gain Register Address
@@ -133,7 +135,7 @@ class Loop_filters_module(object):
         # gain_i  (32 bits signed, actual gain is gain_i/ 2**N_DIVIDE_I)
         # gain_ii (32 bits signed, actual gain is gain_ii/2**N_DIVIDE_II)
         # settings register: 1 bit: bLock
-        bDebugOutput = False
+        bDebugOutput = True
 
         gain_p_int = int(round(gain_p*2.**self.N_DIVIDE_P))
         gain_i_int = int(round(gain_i*2.**self.N_DIVIDE_I))
@@ -209,12 +211,14 @@ class Loop_filters_module(object):
                 self.dev.dpll_write_address(self.gain_p_addr),
                 gain_p_int)
         # Send I gain
-        self.dev.write_Zynq_register_int32(
-                self.dev.dpll_write_address(self.gain_i_addr),
+        self.dev.write_Zynq_register_int64(
+                self.dev.dpll_write_address(self.gain_i_addr_lsbs),
+                self.dev.dpll_write_address(self.gain_i_addr_msbs),
                 gain_i_int)
         # Send II gain
-        self.dev.write_Zynq_register_int32(
-                self.dev.dpll_write_address(self.gain_ii_addr),
+        self.dev.write_Zynq_register_int64(
+                self.dev.dpll_write_address(self.gain_ii_addr_lsbs),
+                self.dev.dpll_write_address(self.gain_ii_addr_msbs),
                 gain_ii_int)
         # Send D gain
         self.dev.write_Zynq_register_int32(
@@ -237,11 +241,13 @@ class Loop_filters_module(object):
         gain_p_int = self.dev.read_Zynq_register_int32(
                 self.dev.dpll_read_address(self.gain_p_addr))
         # Get I Gain
-        gain_i_int = self.dev.read_Zynq_register_int32(
-                self.dev.dpll_read_address(self.gain_i_addr))
+        gain_i_int = self.dev.read_Zynq_register_int64(
+                self.dev.dpll_read_address(self.gain_i_addr_lsbs),
+                self.dev.dpll_read_address(self.gain_i_addr_msbs))
         # Get II Gain
-        gain_ii_int = self.dev.read_Zynq_register_int32(
-                self.dev.dpll_read_address(self.gain_ii_addr))
+        gain_ii_int = self.dev.read_Zynq_register_int64(
+                self.dev.dpll_read_address(self.gain_ii_addr_lsbs),
+                self.dev.dpll_read_address(self.gain_ii_addr_msbs))
         # Get D Gain
         gain_d_int = self.dev.read_Zynq_register_int32(
                 self.dev.dpll_read_address(self.gain_d_addr))
@@ -270,19 +276,22 @@ class Loop_filters_module(object):
 
         unit_delay_phase_ramp = 2*np.pi * freq_axis/fs
         H_cumsum = 1/(1-np.exp(1j*unit_delay_phase_ramp))
+        #H_cumsum = 1/(1j*unit_delay_phase_ramp)
 
         afilt = self.coef_df
         H_filt = afilt/(1-(1-afilt)*np.exp(1j*unit_delay_phase_ramp))
+        #H_filt = afilt/(afilt+(1-np.exp(1j*unit_delay_phase_ramp)))
+        #H_filt = afilt/(afilt+1j*unit_delay_phase_ramp)
         H_diff = (1-np.exp(1j*unit_delay_phase_ramp))
+        #H_diff = 1j*unit_delay_phase_ramp
 
         # The transfer function is the sum of the four terms (P, I, II, D)
+        H_loop_filters_P = self.gain_p * np.exp(-1j*self.N_delay_p * unit_delay_phase_ramp)
         H_loop_filters_I = self.gain_i * H_cumsum * np.exp(-1j*self.N_delay_i * unit_delay_phase_ramp)
         H_loop_filters_II = self.gain_ii * H_cumsum**2 * np.exp(-1j*self.N_delay_ii * unit_delay_phase_ramp)
-        H_loop_filters_P = self.gain_p * np.exp(-1j*self.N_delay_p * unit_delay_phase_ramp)
         H_loop_filters_D = self.gain_d * H_diff * H_filt * np.exp(-1j*self.N_delay_d * unit_delay_phase_ramp)
-        #H_loop_filters = self.gain_d * (0.5) * H_diff * np.exp(-1j*self.N_delay_d * unit_delay_phase_ramp)
+        H_loop_filters = H_loop_filters_P + H_loop_filters_II + H_loop_filters_I + H_loop_filters_D
         #print(H_loop_filters)
-        H_loop_filters = H_loop_filters_II + H_loop_filters_I + H_loop_filters_P + H_loop_filters_D
 
         return H_loop_filters
 

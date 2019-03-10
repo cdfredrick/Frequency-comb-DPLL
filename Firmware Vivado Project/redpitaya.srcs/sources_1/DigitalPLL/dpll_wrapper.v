@@ -285,18 +285,24 @@ localparam LF_CH1_ADDR = 16'h7010;
 
 localparam LF_LOCK_ADDR_OFFSET =    16'h0000;
 localparam LF_GAIN_P_ADDR_OFFSET =  16'h0001;
-localparam LF_GAIN_I_ADDR_OFFSET =  16'h0002;
-localparam LF_GAIN_II_ADDR_OFFSET = 16'h0003;
-localparam LF_GAIN_D_ADDR_OFFSET =  16'h0004;
-localparam LF_COEF_DF_ADDR_OFFSET = 16'h0005;
-localparam LF_GAIN_OL_ADDR_OFFSET = 16'h0006;
+localparam LF_GAIN_I_ADDR_OFFSET_LSBs =  16'h0002;
+localparam LF_GAIN_I_ADDR_OFFSET_MSBs =  16'h0003;
+localparam LF_GAIN_II_ADDR_OFFSET_LSBs = 16'h0004;
+localparam LF_GAIN_II_ADDR_OFFSET_MSBs = 16'h0005;
+localparam LF_GAIN_D_ADDR_OFFSET =  16'h0006;
+localparam LF_COEF_DF_ADDR_OFFSET = 16'h0007;
+localparam LF_GAIN_OL_ADDR_OFFSET = 16'h0008;
 
 // Channel 0 Loop Filter
-wire signed [32-1:0] pll0_gainp, pll0_gaini, pll0_gainii, pll0_gaind;
+wire signed [32-1:0] pll0_gainp, pll0_gaind;
+wire signed [64-1:0] pll0_gaini, pll0_gainii;
 wire signed [18-1:0] pll0_coefdfilter;
 wire signed [16-1:0] pll0_output;
+wire signed [16-1:0] pll0_manual_offset;
+reg signed [16-1:0]  pll0_offset_reg = 16'h0000;
+
 wire pll0_lock, pll0_gain_changedp, pll0_gain_changedi, pll0_gain_changedii, pll0_gain_changedd, pll0_coef_changedd;
-wire pll0_gain_changed;
+wire pll0_gain_changed, pll0_offset_changed;
 wire signed [32-1:0] phase_residuals0;
 
 // Multiplexer for Channel 1 Input
@@ -305,11 +311,15 @@ wire signed [(10-1):0] inst_frequency0_to_pll1;
 wire signed [(10-1):0] pll0_output_to_pll1;
 
 // Channel 1 Loop Filter
-wire signed [32-1:0] pll1_gainp, pll1_gaini, pll1_gainii, pll1_gaind;
+wire signed [32-1:0] pll1_gainp, pll1_gaind;
+wire signed [64-1:0] pll1_gaini, pll1_gainii;
 wire signed [18-1:0] pll1_coefdfilter;
 wire signed [16-1:0] pll1_output;
+wire signed [16-1:0] pll1_manual_offset;
+reg signed [16-1:0]  pll1_offset_reg = 16'h0000;
+
 wire pll1_lock, pll1_gain_changedp, pll1_gain_changedi, pll1_gain_changedii, pll1_gain_changedd, pll1_coef_changedd;
-wire pll1_gain_changed;
+wire pll1_gain_changed, pll1_offset_changed;
 wire signed [32-1:0] phase_residuals1;
 
 //-----------------------------------------------------------------------------
@@ -345,10 +355,10 @@ parallel_bus_register_32bits_or_less # (
 );
 
 // Channel 0 Integral Gain Register
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(32),
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(64),
     .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(LF_CH0_ADDR+LF_GAIN_I_ADDR_OFFSET)
+    .ADDRESS(LF_CH0_ADDR+LF_GAIN_I_ADDR_OFFSET_LSBs) // + LF_GAIN_I_ADDR_OFFSET_MSBs
 ) parallel_bus_register_pll0_gaini (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -359,10 +369,10 @@ parallel_bus_register_32bits_or_less # (
 );
 
 // Channel 0 Double Integral Gain Register
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(32),
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(64),
     .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(LF_CH0_ADDR+LF_GAIN_II_ADDR_OFFSET)
+    .ADDRESS(LF_CH0_ADDR+LF_GAIN_II_ADDR_OFFSET_LSBs) // + LF_GAIN_II_ADDR_OFFSET_MSBs
 ) parallel_bus_register_pll0_gainii (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -400,6 +410,20 @@ parallel_bus_register_32bits_or_less # (
     .update_flag(pll0_coef_changedd)
 );
 
+// Channel 0 Manual Offset Register
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(16),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(16'h6000)
+) parallel_bus_register_manual_offset_pll0 (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll0_manual_offset), 
+    .update_flag(pll0_offset_changed)
+);
+
 //-----------------------------------------------------------------------------
 // Channel 1 Loop Filters Input Registers:
 //
@@ -433,10 +457,10 @@ parallel_bus_register_32bits_or_less # (
 );
 
 // Channel 1 Integral Gain Register 
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(32),
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(64),
     .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(LF_CH1_ADDR+LF_GAIN_I_ADDR_OFFSET)
+    .ADDRESS(LF_CH1_ADDR+LF_GAIN_I_ADDR_OFFSET_LSBs) // + LF_GAIN_I_ADDR_OFFSET_MSBs
 ) parallel_bus_register_pll1_gaini (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -447,10 +471,10 @@ parallel_bus_register_32bits_or_less # (
 );
 
 // Channel 1 Double Integral Gain Register
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(32),
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(64),
     .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(LF_CH1_ADDR+LF_GAIN_II_ADDR_OFFSET)
+    .ADDRESS(LF_CH1_ADDR+LF_GAIN_II_ADDR_OFFSET_LSBs) // + LF_GAIN_II_ADDR_OFFSET_MSBs
 ) parallel_bus_register_pll1_gainii (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -488,6 +512,20 @@ parallel_bus_register_32bits_or_less # (
     .update_flag(pll1_coef_changedd)
 );
 
+// Channel 1 Manual Offset Register
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(16),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(16'h6001)
+) parallel_bus_register_manual_offset_pll1 (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll1_manual_offset), 
+    .update_flag(pll1_offset_changed)
+);
+
 // Channel 1 Input Multiplexer Register
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(2),
@@ -509,12 +547,19 @@ parallel_bus_register_32bits_or_less # (
 // This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
 assign pll0_gain_changed = pll0_gain_changedp | pll0_gain_changedi | pll0_gain_changedii | pll0_gain_changedd | pll0_coef_changedd;
 
+always @(posedge clk1)
+    if (pll0_offset_changed) begin
+        pll0_offset_reg <= pll0_manual_offset;
+    end else if (pll0_lock) begin
+        pll0_offset_reg <= pll0_output;
+    end
+
 // Finally the PLL itself:
 PLL_loop_filters_with_saturation # (
-    .N_DIVIDE_P(10),
-    .N_DIVIDE_I(27),
-    .N_DIVIDE_II(36),
-    .N_DIVIDE_D(11),
+    .N_DIVIDE_P(16),
+    .N_DIVIDE_I(48),
+    .N_DIVIDE_II(48),
+    .N_DIVIDE_D(0),
     .N_OUTPUT(16)
 ) PLL0_loop_filters (
     .clk(clk1), 
@@ -526,6 +571,7 @@ PLL_loop_filters_with_saturation # (
     .gain_ii(pll0_gainii),
     .gain_d(pll0_gaind),
     .coef_d_filter(pll0_coefdfilter),
+    .offset_in(pll0_offset_reg),
     .phase_residuals(phase_residuals0),
     .data_out(pll0_output),
     .saturated_low(),
@@ -556,12 +602,19 @@ multiplexer_3to1_async loop_filters_1_mux (
 // This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
 assign pll1_gain_changed = pll1_gain_changedp | pll1_gain_changedi | pll1_gain_changedii | pll1_coef_changedd;
 
+always @(posedge clk1)
+    if (pll1_offset_changed) begin
+        pll1_offset_reg <= pll1_manual_offset;
+    end else if (pll1_lock) begin
+        pll1_offset_reg <= pll1_output;
+    end
+
 // Finally PLL 1 itself:
 PLL_loop_filters_with_saturation # (
-    .N_DIVIDE_P(10),
-    .N_DIVIDE_I(27),
-    .N_DIVIDE_II(36),
-    .N_DIVIDE_D(11),
+    .N_DIVIDE_P(16),
+    .N_DIVIDE_I(48),
+    .N_DIVIDE_II(48),
+    .N_DIVIDE_D(0),
     .N_OUTPUT(16)
 ) PLL1_loop_filters (
     .clk(clk1), 
@@ -573,6 +626,7 @@ PLL_loop_filters_with_saturation # (
     .gain_ii(pll1_gainii),
     .gain_d(pll1_gaind),
     .coef_d_filter(pll1_coefdfilter),
+    .offset_in(pll1_offset_reg),
     .phase_residuals(phase_residuals1),
     .data_out(pll1_output),
     .saturated_low(),
@@ -732,43 +786,15 @@ system_identification_vna_with_dither_wrapper system_identification_vna_inst (
 // Limits output to user specified range.
 //
 
-wire signed [16-1:0] manual_offset_dac0, positive_limit_dac0, negative_limit_dac0;
+wire signed [16-1:0] positive_limit_dac0, negative_limit_dac0;
 wire dac0_railed_negative, dac0_railed_positive;
 
-wire signed [16-1:0] manual_offset_dac1, positive_limit_dac1, negative_limit_dac1;
+wire signed [16-1:0] positive_limit_dac1, negative_limit_dac1;
 wire dac1_railed_negative, dac1_railed_positive;
 
 //-----------------------------------------------------------------------------
 // DAC Output Summation Input Registers:
 //
-
-// Channel 0 Manual Offset Register
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(16),
-    .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(16'h6000)
-) parallel_bus_register_manual_offset_dac0 (
-    .clk(clk1), 
-    .bus_strobe(cmd_trig), 
-    .bus_address(cmd_addr), 
-    .bus_data({cmd_data2in, cmd_data1in}), 
-    .register_output(manual_offset_dac0), 
-    .update_flag()
-);
-
-// Channel 1 Manual Offset Register
-parallel_bus_register_32bits_or_less # (
-    .REGISTER_SIZE(16),
-    .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(16'h6001)
-) parallel_bus_register_manual_offset_dac1 (
-    .clk(clk1), 
-    .bus_strobe(cmd_trig), 
-    .bus_address(cmd_addr), 
-    .bus_data({cmd_data2in, cmd_data1in}), 
-    .register_output(manual_offset_dac1), 
-    .update_flag()
-);
 
 // Channel 0 Output Limits Register
 parallel_bus_register_32bits_or_less # (
@@ -810,7 +836,7 @@ output_summing # (
     .in0              (  dither_output_to_dac0      ), 
     .in1              (  vna_output_to_dac0         ), 
     .in2              (  pll0_output                ), 
-    .in3              (  manual_offset_dac0         ), 
+    .in3              (  ), 
     .data_output      (  DACout0                    ), 
     .positive_limit   (  positive_limit_dac0        ),
     .negative_limit   (  negative_limit_dac0        ),
@@ -831,7 +857,7 @@ output_summing # (
     .in0              (  dither_output_to_dac1      ), 
     .in1              (  vna_output_to_dac1         ), 
     .in2              (  pll1_output                ), 
-    .in3              (  manual_offset_dac1         ), 
+    .in3              (  ), 
     .data_output      (  DACout1                    ), 
     .positive_limit   (  positive_limit_dac1        ),
     .negative_limit   (  negative_limit_dac1        ),

@@ -154,7 +154,7 @@ class DisplayVNAWindow(QtGui.QWidget):
                 ddc_freq_sign = -1.
 
             # Dirty hack because convertDDCCountsToHz expects a numpy array and we only have a scalar to give it
-            Hz_per_VNA_input_counts = -ddc_freq_sign * np.mean(self.sl.convertDDCCountsToHz(   np.array((1,))   ))
+            Hz_per_VNA_input_counts = -ddc_freq_sign * self.sl.dev.DDC_FREQ_INT
 #            Hz_per_VNA_input_counts = self.sl.convertDDCCountsToHz(1)
             print('Hz_per_VNA_input_counts = %s' % Hz_per_VNA_input_counts)
             physical_input_units_per_input_counts = Hz_per_VNA_input_counts

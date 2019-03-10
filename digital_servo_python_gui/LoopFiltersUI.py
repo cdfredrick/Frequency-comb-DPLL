@@ -925,7 +925,7 @@ class LoopFiltersUI(Qt.QWidget):
         self.curve_fdf.setData(f_array, 20*np.log10(gain_array + self.MINIMUM_GAIN_DISPLAY))
 
 
-        f_array = np.logspace(np.log10(fmin), np.log10(fmax), 100)
+        f_array = np.logspace(np.log10(fmin), np.log10(fmax), 1000)
         actual_gain_array = np.abs(self.sl.pll[self.filter_number].get_current_transfer_function(f_array, self.sl.dev.ADC_CLK_Hz) * self.kc)
         self.curve_actual.setData(f_array, 20*np.log10(actual_gain_array + self.MINIMUM_GAIN_DISPLAY))
 

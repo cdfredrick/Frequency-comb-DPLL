@@ -99,7 +99,6 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
     display_phase = 0 # used to refresh the phase noise plot only once every N refresh cycles
     VCO_detected_gain_in_Hz_per_Volts = [1, 1, 1]
-    bFirstTimeLockCheckBoxClicked = True
 
 #    def __init__(self):
 #        super(XEM_GUI_MainWindow, self).__init__()
@@ -639,71 +638,60 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         else:   # bLock = False
             if not self.sl.output_vco[self.selected_ADC]:
+                # We are doing a locked->unlocked transition
+                # Turn the lock off
+                if self.selected_ADC == 0:
+                    self.qloop_filters[0].qchk_lock.setChecked(False)
+                    self.qloop_filters[0].updateFilterSettings()
+    #                self
+    #                self.updateGraph
+                elif self.selected_ADC == 1:
+                    self.qloop_filters[1].qchk_lock.setChecked(False)
+                    self.qloop_filters[1].updateFilterSettings()
+
+                # Update the manual dac offsets to where the lock has decided to sit:
+                # This is to prevent any violent step on the actuator when we turn off the lock:
+                # It also prevents mode changes (the laser should stay fairly close to when it was locked.
+                if self.selected_ADC == 0:
+                    # Go and measure the current DAC DC value:
+                    N_points = 10e3
+                    self.sl.setup_DAC0_write(N_points)
+                    self.sl.trigger_write()
+                    self.sl.wait_for_write()
+                    samples_out = self.sl.read_dac_samples_from_DDR2()
+#                    print(np.mean(samples_out))
+                    current_dac_offset_in_counts = np.mean(samples_out)
+                    kDAC = 0
 
 
-                if not self.bFirstTimeLockCheckBoxClicked:
-                    # We are doing a locked->unlocked transition
-                    # 1. Smoothly ramp the manual dac offsets to where the lock has decided to sit:
-                    # This is to prevent any violent step on the actuator when we turn off the lock:
-                    # It also prevents mode changes (the laser should stay fairly close to when it was locked.
-                    if self.selected_ADC == 0:
-                        # Go and measure the current DAC DC value:
-                        N_points = 10e3
-                        self.sl.setup_DAC0_write(N_points)
-                        self.sl.trigger_write()
-                        self.sl.wait_for_write()
-                        samples_out = self.sl.read_dac_samples_from_DDR2()
-    #                    print(np.mean(samples_out))
-                        current_dac_offset_in_counts = np.mean(samples_out)
-                        kDAC = 0
+                elif self.selected_ADC == 1:
+                    N_points = 10e3
+                    self.sl.setup_DAC1_write(N_points)
+                    self.sl.trigger_write()
+                    self.sl.wait_for_write()
+                    samples_out = self.sl.read_dac_samples_from_DDR2()
+#                    print(np.mean(samples_out))
+                    current_dac_offset_in_counts = np.mean(samples_out)
+                    kDAC = 1
 
+                # Read the current manual offset value:
+#                current_manual_offset_in_slider_units = float(self.q_dac_offset[kDAC].value())
+                # Convert the DAC DC offset to the slider units:
+                current_dac_offset_in_slider_units = current_dac_offset_in_counts # same as slider units
 
-                    elif self.selected_ADC == 1:
-                        N_points = 10e3
-                        self.sl.setup_DAC1_write(N_points)
-                        self.sl.trigger_write()
-                        self.sl.wait_for_write()
-                        samples_out = self.sl.read_dac_samples_from_DDR2()
-    #                    print(np.mean(samples_out))
-                        current_dac_offset_in_counts = np.mean(samples_out)
-                        kDAC = 1
+                self.q_dac_offset[kDAC].setValue(current_dac_offset_in_slider_units)
+                #self.setDACOffset_event()
 
-                    # Read the current manual offset value:
-                    current_manual_offset_in_slider_units = float(self.q_dac_offset[kDAC].value())
-                    # Convert the DAC DC offset to the slider units:
-                    current_dac_offset_in_slider_units = current_dac_offset_in_counts # same as slider units
-
-                    # Set up a ramp with 20 steps:
-                    desired_ramp = np.linspace(current_manual_offset_in_slider_units, current_dac_offset_in_slider_units, 20)
-                    print('ramping from %d to %d in slider units' % (current_manual_offset_in_slider_units, current_dac_offset_in_slider_units))
-
-                    Total_ramp_time = 0.1
-                    for k2 in range(len(desired_ramp)):
-    #                    print('set slider to %d' % desired_ramp[k2])
-                        self.q_dac_offset[kDAC].setValue(desired_ramp[k2])
-                        self.setDACOffset_event()
-                        time.sleep(float(Total_ramp_time)/len(desired_ramp))
-
-                    # 2. turn the lock off
-                    if self.selected_ADC == 0:
-                        self.qloop_filters[0].qchk_lock.setChecked(False)
-                        self.qloop_filters[0].updateFilterSettings()
-        #                self
-        #                self.updateGraph
-                    elif self.selected_ADC == 1:
-                        self.qloop_filters[1].qchk_lock.setChecked(False)
-                        self.qloop_filters[1].updateFilterSettings()
-
-                        # LEGACY procedure for the NIST lockbox with two DACs on the 2nd PLL channel:
-                        # # There is a different procedure for turning the lock on on the optical loop:
-                        # # first we grab the beat using the DAC2 frequency-locked loop. then we set this integrator to hold
-                        # # and switch to the DAC1 PLL + DAC2 second integrator.
-                        # self.qloop_filters[1].qradio_mode_off.setChecked(True)
-                        # self.qloop_filters[1].qradio_mode_slow.setChecked(False)
-                        # self.qloop_filters[1].qradio_mode_fast.setChecked(False)
-                        # self.qloop_filters[1].qradio_mode_both.setChecked(False)
-                        # self.qloop_filters[1].updateSettings()
-
+#                # Set up a ramp with 20 steps:
+#                desired_ramp = np.linspace(current_manual_offset_in_slider_units, current_dac_offset_in_slider_units, 20)
+#                print('ramping from %d to %d in slider units' % (current_manual_offset_in_slider_units, current_dac_offset_in_slider_units))
+#
+#                Total_ramp_time = 0.1
+#                for k2 in range(len(desired_ramp)):
+##                    print('set slider to %d' % desired_ramp[k2])
+#                    self.q_dac_offset[kDAC].setValue(desired_ramp[k2])
+#                    self.setDACOffset_event()
+#                    time.sleep(float(Total_ramp_time)/len(desired_ramp))
             else:
                 # if the VCO is activated, we don't want to try to estimate the output offset, we just turn off the lock directly
                 # 2. turn the lock off
@@ -728,11 +716,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 #     # automatic mode
                 #     self.sl.setDitherLockInState(2, True)
 
-
             self.qchk_lock.setStyleSheet('font-size: 18pt; color: white; background-color: red')
-
-
-        self.bFirstTimeLockCheckBoxClicked = False
 
 
     def initUI(self):
@@ -1850,29 +1834,12 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         #--- Plot Display Phase Noise Spectrum
         #
         elif self.qcombo_ddc_plot.currentIndex() == 1:
-            # Compute the phase noise time-domain standard deviation:
-            phasenoise_stddev = np.std(np.cumsum(inst_freq*2*np.pi/self.sl.dev.ADC_CLK_Hz))
+            # Compute the phase noise:
             phase_noise = 10*np.log10(spc + 1e-20) - 20*np.log10(frequency_axis)
-            # Display the phase noise (equal to 1/f^2 times the frequency noise PSD)
-            self.curve_DDC0_spc.setData(frequency_axis[1:last_index_shown], phase_noise[1:last_index_shown])
-            if self.bAveragePhaseNoise:
-                phase_noise_avg = 10*np.log10(self.spc_running_sum + 1e-20) - 20*np.log10(frequency_axis)
-                self.curve_DDC0_spc_avg.setData(frequency_axis[1:last_index_shown], phase_noise_avg[1:last_index_shown])
-                self.curve_DDC0_spc_avg.setVisible(True)
-            else:
-                self.curve_DDC0_spc_avg.setVisible(False)
-            self.qplt_DDC0_spc.setXRange(f_limits[0], f_limits[1])
-            self.qplt_DDC0_spc.setTitle('Phase noise PSD, std dev = %.3g radrms' % phasenoise_stddev)
-            self.qplt_DDC0_spc.setLabel('left', 'PSD [dBc/Hz]')
-            #self.qplt_DDC0_spc.setYRange(y_limits[0], y_limits[1])
-            self.qplt_DDC0_spc.enableAutoRange(y=False)
-            self.qplt_DDC0_spc.setYRange(phase_noise[1:last_index_shown].mean()-10, phase_noise[1:last_index_shown].max()+10, padding=0)
-            self.qplt_DDC0_spc.showGrid(y=False)
-            #self.qplt_DDC0_spc.setAxisScaleEngine(Qwt.QwtPlot.xBottom, Qwt.QwtLog10ScaleEngine())
-            self.qplt_DDC0_spc.getPlotItem().setLogMode(x=True)
 
-            self.qplt_DDC0_spc.setXRange(np.log10(f_limits[0]), np.log10(f_limits[1]*5./6.0))   # the scaling is because the widget doesn't seem to use the exact values that we pass...
-            self.qplt_DDC0_spc.setLabel('bottom', 'Frequency [Hz]')
+            # Comput the time-domain standard deviation:
+            inst_phase = np.cumsum(inst_freq*2*np.pi/self.sl.dev.ADC_CLK_Hz)
+            phasenoise_stddev = np.std(inst_phase)
 
             # Display the cumulative integral of the phase noise:
             # Select desired frequency range:
@@ -1889,20 +1856,45 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             frequency_axis_integral = frequency_axis[1:integration_higher_index]
 
             # Integrate the phase noise PSD, from the highest frequency to the lowest
-            phase_psd = spc[1:integration_higher_index] / frequency_axis_integral**2
-            cumul_int = np.flipud(np.cumsum(np.flipud(phase_psd))) * np.mean(np.diff(frequency_axis_integral))
-#                print((cumul_int).shape)
-#                cumul_int = 0*cumul_int + 10
-#                print((cumul_int).shape)
+            if self.bAveragePhaseNoise:
+                phase_psd = self.spc_running_sum[1:integration_higher_index] / frequency_axis_integral**2
+                cumul_int = np.flipud(np.cumsum(np.flipud(phase_psd))) * np.mean(np.diff(frequency_axis_integral))
+            else:
+                phase_psd = spc[1:integration_higher_index] / frequency_axis_integral**2
+                cumul_int = np.flipud(np.cumsum(np.flipud(phase_psd))) * np.mean(np.diff(frequency_axis_integral))
+
+            integrated_noise = np.max(np.sqrt(cumul_int))
 
             # Show results
             self.curve_DDC0_cumul_phase.setData(frequency_axis_integral, np.sqrt(cumul_int))
             self.curve_DDC0_cumul_phase.setVisible(True)
-            #self.qplt_DDC0_spc_right_viewbox.setYRange(0, 2*2*np.pi)
+            self.qplt_DDC0_spc_right_viewbox.setYRange(0, np.max(np.sqrt(cumul_int))*1.5)
             #self.qplt_DDC0_spc_right_viewbox.setXRange(0, 2*2*np.pi)
-#                self.qplt_DDC0_spc.setAxisScale(Qwt.QwtPlot.xBottom, frequency_axis[1], frequency_axis[last_index_shown])
 
-#                self.qplt_DDC0_spc.setAxisScale(Qwt.QwtPlot.yRight, 0, 2*2*np.pi)
+            # Display the phase noise (equal to 1/f^2 times the frequency noise PSD)
+            self.curve_DDC0_spc.setData(frequency_axis[1:last_index_shown], phase_noise[1:last_index_shown])
+            if self.bAveragePhaseNoise:
+                phase_noise_avg = 10*np.log10(self.spc_running_sum + 1e-20) - 20*np.log10(frequency_axis)
+                self.curve_DDC0_spc_avg.setData(frequency_axis[1:last_index_shown], phase_noise_avg[1:last_index_shown])
+                self.curve_DDC0_spc_avg.setVisible(True)
+            else:
+                self.curve_DDC0_spc_avg.setVisible(False)
+            self.qplt_DDC0_spc.setXRange(f_limits[0], f_limits[1])
+            self.qplt_DDC0_spc.setTitle('Phase noise PSD, std dev = {:.2e} radrms; Integrated PSD = {:.2e} radrms'.format(phasenoise_stddev, integrated_noise))
+            self.qplt_DDC0_spc.setLabel('left', 'PSD [dBc/Hz]')
+            #self.qplt_DDC0_spc.setYRange(y_limits[0], y_limits[1])
+            self.qplt_DDC0_spc.enableAutoRange(y=False)
+            if self.bAveragePhaseNoise:
+                self.qplt_DDC0_spc.setYRange(phase_noise_avg[1:last_index_shown].mean()-10, phase_noise_avg[1:last_index_shown].max()+10, padding=0)
+            else:
+                self.qplt_DDC0_spc.setYRange(phase_noise[1:last_index_shown].mean()-10, phase_noise[1:last_index_shown].max()+10, padding=0)
+            self.qplt_DDC0_spc.showGrid(y=False)
+            #self.qplt_DDC0_spc.setAxisScaleEngine(Qwt.QwtPlot.xBottom, Qwt.QwtLog10ScaleEngine())
+            self.qplt_DDC0_spc.getPlotItem().setLogMode(x=True)
+
+            self.qplt_DDC0_spc.setXRange(np.log10(f_limits[0]), np.log10(f_limits[1]*5./6.0))   # the scaling is because the widget doesn't seem to use the exact values that we pass...
+            self.qplt_DDC0_spc.setLabel('bottom', 'Frequency [Hz]')
+
 
         #----------------------------------------------------------------------
         #--- Plot Frequency Error
@@ -2013,14 +2005,22 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             setup_func_dict[currentSelector](N_points)
             self.sl.trigger_write()
             self.sl.wait_for_write()
-            (samples_out, ref_exp0) = self.sl.read_adc_samples_from_DDR2()
+            if currentSelector==0 or currentSelector==1:
+                (samples_out_raw, ref_exp0) = self.sl.read_adc_samples_from_DDR2()
+                self.ref_exp0 = ref_exp0
+                self.raw_adc_samples = samples_out_raw
+                # Scale samples to Full Scale (FS)
+                samples_out = samples_out_raw.astype(dtype=np.float) / (self.sl.dev.ADC_INT_HR*2)
+                # Scale samples to Volts
+                samples_out_v = samples_out_raw.astype(dtype=np.float) * self.sl.dev.ADC_V_INT
+            else:
+                samples_out_raw = self.sl.read_dac_samples_from_DDR2()
+                # Scale samples to Full Scale (FS)
+                samples_out = samples_out_raw.astype(dtype=np.float) / (self.sl.dev.DAC_INT_HR*2)
+                # Scale samples to Volts
+                samples_out_v = samples_out_raw.astype(dtype=np.float) * self.sl.dev.DAC_V_INT
 
-            max_abs = np.max(np.abs(samples_out))
-
-            self.ref_exp0 = ref_exp0
-            self.raw_adc_samples = samples_out
-            # Scale samples to Full Scale (FS)
-            samples_out = samples_out.astype(dtype=np.float) / (self.sl.dev.ADC_INT_HR*2)
+            max_abs = np.max(np.abs(samples_out_raw))
 
         except:
             # ADC read failed.
@@ -2034,24 +2034,6 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         if self.bDisplayTiming == True:
             print('Elapsed time (Comm) = %f' % (time.clock()-start_time))
         start_time = time.clock()
-
-        # Update the scale which indicates the ADC fill ratio in numbers of bits:
-        max_abs = np.max(np.abs(self.raw_adc_samples))
-        if max_abs == 0:
-            max_abs = 1 # to prevent passing a 0 value to the log function, which throws an exception
-        max_abs_in_bits = np.log2(max_abs)
-
-        self.qadc0_scale.setValue(max_abs_in_bits)
-        self.qlabel_adc_fill_value.setText('{:.1f} bits'.format(max_abs_in_bits))
-
-
-        # Compute the baseband IQ data and the spectrum:
-        # Read the reference frequency, should contain a negative frequency (encoded as a frequency above Nyquist) if the VCO sign is positive
-        if self.selected_ADC == 0:
-            f_reference = self.sl.get_ddc0_ref_freq()
-        elif self.selected_ADC == 1:
-            f_reference = self.sl.get_ddc1_ref_freq()
-        f_reference = ((f_reference+self.sl.dev.ADC_CLK_Hz/2) % self.sl.dev.ADC_CLK_Hz)-self.sl.dev.ADC_CLK_Hz/2  # The modulo converts a frequency above Nyquist to the matching negative frequency
 
         # Compute the window function used to display the spectrum:
         N_fft = 2**(int(np.ceil(np.log2(len(samples_out)))))
@@ -2108,6 +2090,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             #self.qplt_spc.setAxisScale(Qwt.QwtPlot.xBottom, frequency_axis[0]/1e6, frequency_axis[last_index_shown]/1e6)
             #self.qplt_spc.setAxisScale(Qwt.QwtPlot.yLeft, -120, 0)
             self.plt_spc.setTitle('Spectrum')
+            if not(currentSelector == 0 or currentSelector == 1):
+                self.curve_filter.setVisible(False)
 
         #----------------------------------------------------------------------
         #--- Setup Time Domain Plot
@@ -2115,16 +2099,15 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         elif self.qcombo_adc_plottype.currentIndex() == 1:
             # Display time-domain plot instead
             # Convert from Full Scale to Voltage
-            samples_out = samples_out*2*self.sl.dev.ADC_V_INT
-            time_axis = np.linspace(0, len(samples_out)-1, len(samples_out))/self.sl.dev.ADC_CLK_Hz
+            time_axis = np.linspace(0, len(samples_out_v)-1, len(samples_out_v))/self.sl.dev.ADC_CLK_Hz
 
-            self.curve_spc.setData(time_axis, samples_out)
+            self.curve_spc.setData(time_axis, samples_out_v)
 #            self.qplt_spc.setAxisScale(Qwt.QwtPlot.yLeft, -120, 0)
 #            self.qplt_spc.setAxisAutoScale(Qwt.QwtPlot.yLeft)
             self.curve_filter.setVisible(False)
             # Simply setting a curve to be invisible does not prevent it from being used to compute the axis, so we have to set the axis manually:
-            valmin = np.min(samples_out)
-            valmax = np.max(samples_out)
+            valmin = np.min(samples_out_v)
+            valmax = np.max(samples_out_v)
 
             # self.qplt_spc.setAxisScale(Qwt.QwtPlot.yLeft, (valmin+valmax)/2-1.1*(valmax-valmin)/2-1/65e3, (valmin+valmax)/2+1.1*(valmax-valmin)/2+1/65e3)
             # self.qplt_spc.setAxisScale(Qwt.QwtPlot.xBottom, time_axis[0], time_axis[-1])
@@ -2134,7 +2117,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             self.plt_spc.setXRange(time_axis[0], time_axis[-1])
             self.plt_spc.showGrid(x=True, y=True)
 
-            self.plt_spc.setTitle('Time-domain signal, std = %.3g mV' % (1e3*np.std(samples_out)))
+            self.plt_spc.setTitle('Time Domain signal = {:.2e} V; std = {:.1e} V'.format(np.mean(samples_out_v),np.std(samples_out_v)))
 
 
 
@@ -2156,6 +2139,14 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 print('Elapsed time (Compute complex baseband) = %f' % (time.clock()-start_time))
             start_time = time.clock()
 
+            # Update the scale which indicates the ADC fill ratio in numbers of bits:
+            max_abs = np.max(np.abs(self.raw_adc_samples))
+            if max_abs == 0:
+                max_abs = 1 # to prevent passing a 0 value to the log function, which throws an exception
+            max_abs_in_bits = np.log2(max_abs)
+
+            self.qadc0_scale.setValue(max_abs_in_bits)
+            self.qlabel_adc_fill_value.setText('{:.1f} bits'.format(max_abs_in_bits))
 
             # Compute the SNR on the amplitude of the baseband signal:
             amplitude = np.abs(complex_baseband)
@@ -2279,6 +2270,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             #------------------------------------------------------------------
             #--- Plot Filter Response
             #
+
             if self.qcombo_adc_plottype.currentIndex() == 0:
                 # Compute the spectrum of the filter:
                 spc_filter = self.sl.get_frontend_filter_response(frequency_axis, self.selected_ADC)
@@ -2338,7 +2330,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         else:
             # The signal is from DAC0 or DAC1:
             # Not sure what to put in the baseband IQ plot.  For now we put nothing
-            self.qthermo_baseband_snr.setValue(0)
+            #self.qthermo_baseband_snr.setValue(0)
 #                empty_array = np.array(0)
 #                self.curve_IQ.setData(empty_array, empty_array)
 #                self.curve_DDC0_spc_amplitude_noise.setData(empty_array, empty_array)

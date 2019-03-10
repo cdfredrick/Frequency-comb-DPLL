@@ -47,7 +47,7 @@ class RP_PLL_device():
     DAC_INT_HR = 2**(DAC_N_BITS-1)-1 # Signed integers per half range, N/HR
     DAC_V_HR = 1 # Voltage output per half range, V/HR
     DAC_V_INT = DAC_V_HR/DAC_INT_HR # Voltage per integer, V/N
-    
+
     DAC_LIM_LOW_INT = [-DAC_INT_HR, -DAC_INT_HR, 0] # Hardware Limits
     DAC_LIM_HIGH_INT = [DAC_INT_HR, DAC_INT_HR, 0]
 
@@ -143,32 +143,32 @@ class RP_PLL_device():
     BUS_ADDR_PLL_BASE = [0x7000, 0x7010, 0x7020]
     BUS_OFFSET_LOCK = 0x0       # [0x7000, 0x7010, 0x7020]
     BUS_OFFSET_GAIN_P = 0x1     # [0x7001, 0x7011, 0x7021]
-    BUS_OFFSET_GAIN_I = 0x2     # [0x7002, 0x7012, 0x7022]
-    #BUS_OFFSET_GAIN_I_MSBs = 0x3     # [0x7003, 0x7013, 0x7023]
-    BUS_OFFSET_GAIN_II = 0x3    # [0x7004, 0x7014, 0x7024]
-    #BUS_OFFSET_GAIN_II_MSBs = 0x5    # [0x7005, 0x7015, 0x7025]
-    BUS_OFFSET_GAIN_D = 0x4     # [0x7006, 0x7016, 0x7026]
-    BUS_OFFSET_COEF_DF = 0x5    # [0x7007, 0x7017, 0x7027]
-    BUS_OFFSET_GAIN_OL = 0x6 #[0x9010, 0x9011, 0x9012]
+    BUS_OFFSET_GAIN_I_LSBs = 0x2     # [0x7002, 0x7012, 0x7022]
+    BUS_OFFSET_GAIN_I_MSBs = 0x3     # [0x7003, 0x7013, 0x7023]
+    BUS_OFFSET_GAIN_II_LSBs = 0x4    # [0x7004, 0x7014, 0x7024]
+    BUS_OFFSET_GAIN_II_MSBs = 0x5    # [0x7005, 0x7015, 0x7025]
+    BUS_OFFSET_GAIN_D = 0x6     # [0x7006, 0x7016, 0x7026]
+    BUS_OFFSET_COEF_DF = 0x7    # [0x7007, 0x7017, 0x7027]
+    BUS_OFFSET_GAIN_OL = 0x8 #[0x9010, 0x9011, 0x9012]
 
     # Loop Filter Constants:
-    N_BITS_DIVIDE_P = [10, 10, 11]
-    N_BITS_DIVIDE_I = [27, 27, 40]
-    N_BITS_DIVIDE_II = [36, 36, 29]
-    N_BITS_DIVIDE_D = [11, 11, 0]
-    N_BITS_DIVIDE_DF = [18, 18, 18]
+    N_BITS_DIVIDE_P = [16]*3
+    N_BITS_DIVIDE_I = [48]*3
+    N_BITS_DIVIDE_II = [48]*3
+    N_BITS_DIVIDE_D = [0]*3
+    N_BITS_DIVIDE_DF = [18]*3
 
     # Loop Filter Constants:
     N_BITS_GAIN_P = [32]*3
-    N_BITS_GAIN_I = [32]*3
-    N_BITS_GAIN_II = [32]*3
+    N_BITS_GAIN_I = [64]*3
+    N_BITS_GAIN_II = [64]*3
     N_BITS_GAIN_D = [32]*3
     N_BITS_COEF_DF = [18]*3
 
     N_CYCLS_DELAY_P = [5]*3 # TODO: put the correct values here
-    N_CYCLES_DELAY_I = [6]*3 # TODO: put the correct values here
-    N_CYCLES_DELAY_II = [7]*3 # TODO: put the correct values here
-    N_CYCLES_DELAY_D = [7]*3 # TODO: put the correct values here
+    N_CYCLES_DELAY_I = [8]*3 # TODO: put the correct values here
+    N_CYCLES_DELAY_II = [10]*3 # TODO: put the correct values here
+    N_CYCLES_DELAY_D = [12]*3 # TODO: put the correct values here
 
     # Channel 1 Loop Filter Input Multiplexer Address Offset:
     BUS_ADDR_MUX_PLL1 = 0x9000
@@ -199,7 +199,7 @@ class RP_PLL_device():
     BUS_ADDR_output_gain                                = 0x5006
     BUS_ADDR_input_and_output_mux_selector              = 0x5007
     BUS_ADDR_VNA_mode_control                           = 0x5008
-    
+
     # VNA Direct Digital Synthesis (DDS) Local Oscilator Constants:
     VNA_DDS_PHASE_ACCUM_N_BITS = 48 #TODO: make these distinct IPs from the DDC
 

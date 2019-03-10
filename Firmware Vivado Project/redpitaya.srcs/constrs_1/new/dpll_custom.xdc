@@ -9,17 +9,4 @@ set_input_delay -clock [get_clocks adc_clk_p_i] -max -add_delay 0.700 [get_ports
 
 
 
-set_output_delay -clock [get_clocks dac_sel_o] -clock_fall -min -add_delay 0.000 [get_ports {dac_dat_o[*]}]
-set_output_delay -clock [get_clocks dac_sel_o] -clock_fall -max -add_delay 0.000 [get_ports {dac_dat_o[*]}]
-set_output_delay -clock [get_clocks dac_sel_o] -min -add_delay 0.000 [get_ports {dac_dat_o[*]}]
-set_output_delay -clock [get_clocks dac_sel_o] -max -add_delay 0.000 [get_ports {dac_dat_o[*]}]
-set_output_delay -clock [get_clocks adc_clk_p_i] -min -add_delay 0.000 [get_ports {exp_n_io[*]}]
-set_output_delay -clock [get_clocks adc_clk_p_i] -max -add_delay 0.000 [get_ports {exp_n_io[*]}]
-set_output_delay -clock [get_clocks adc_clk_p_i] -min -add_delay 0.000 [get_ports {exp_p_io[*]}]
-set_output_delay -clock [get_clocks adc_clk_p_i] -max -add_delay 0.000 [get_ports {exp_p_io[*]}]
-set_output_delay -clock [get_clocks adc_clk_p_i] -min -add_delay 0.000 [get_ports {led_o[*]}]
-set_output_delay -clock [get_clocks adc_clk_p_i] -max -add_delay 0.000 [get_ports {led_o[*]}]
-set_output_delay -clock [get_clocks dac_sel_o] -clock_fall -min -add_delay 0.000 [get_ports dac_rst_o]
-set_output_delay -clock [get_clocks dac_sel_o] -clock_fall -max -add_delay 0.000 [get_ports dac_rst_o]
-set_output_delay -clock [get_clocks dac_sel_o] -min -add_delay 0.000 [get_ports dac_rst_o]
-set_output_delay -clock [get_clocks dac_sel_o] -max -add_delay 0.000 [get_ports dac_rst_o]
+
