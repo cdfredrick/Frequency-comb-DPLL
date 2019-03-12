@@ -55,7 +55,7 @@ end integrator_with_saturation;
 architecture Behavioral of integrator_with_saturation is
     -- Internal variables
 	-----------------------------------------------------------------------
-	constant N_BITS_TEMP : integer := MAX_local(data_in'length, N_OUTPUT)+1;	-- the extra bit is to hold the full, unwrapped result
+	constant N_BITS_TEMP : integer := MAX_local(N_INPUT, N_OUTPUT)+2;	-- the extra bits are to hold the full, unwrapped result
 	signal accumulator : signed(N_OUTPUT-1 downto 0) := (others => '0');
 	signal temp_sum : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
 	
@@ -68,23 +68,11 @@ architecture Behavioral of integrator_with_saturation is
 begin
     -- Integrator with saturation, anti-windup, and synchronous clear
 	----------------------------------------------------------------
-	-- ***describe***
+	-- A test integration is performed on the first clock cycle, and then that result is
+	--     compared with the limits before assigning to the output on the second clock cycle.
 	--
 	-- data_out = saturate(cumsum(data_in))
 	-- 2 total clock cycle of delay
-
-    process (clk)
-    begin
-        if rising_edge(clk) then
-            if sclr = '1' then
-                temp_sum <= resize(initial_offset, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
-            else
-                -- Compute the full, unwrapped result (hence the extra bit compared to the biggest operand - see definition of N_BITS_TEMP)				
-				temp_sum <= resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
-			end if;
-		end if;
-	end process;
-
 	process (clk)
 	begin
 		if rising_edge(clk) then
@@ -95,30 +83,32 @@ begin
 			if sclr = '1' then
 				-- reset state:
 				accumulator <= initial_offset;
+				temp_sum <= resize(initial_offset, N_BITS_TEMP);
 				railed_positive_out <= '0';
 				railed_negative_out <= '0';
 			else
-				-- Only assign the result if it won't cause overflow,
+			    -- Only assign the result if it won't cause overflow,
 				-- and we also don't integrate if the signal chain is railed further downstream (anti-windup behavior)
 				if temp_sum > ACCUM_MAX or (railed_positive = '1' and data_in>0) then
-					-- hold value
-					accumulator <= accumulator;
+					-- Hold current output value
 					railed_positive_out <= '1';
 					railed_negative_out <= '0';
-					
+					-- The next integration contains the current input and the current output.
+				    temp_sum <= resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
 				elsif temp_sum < ACCUM_MIN or (railed_negative = '1' and data_in<0) then
-					-- hold value
-					accumulator <= accumulator;
+					-- Hold current output value
 					railed_positive_out <= '0';
 					railed_negative_out <= '1';
-					
+					-- The next integration contains the current input and the current output.
+				    temp_sum <= resize(accumulator, N_BITS_TEMP) + resize(data_in, N_BITS_TEMP);
 				else
-					-- integrate
+					-- Set new output value
 					accumulator <= temp_sum(accumulator'range);
 					railed_positive_out <= '0';
 					railed_negative_out <= '0';
+					-- The next integration contains the current input and the new output ("temp_sum" -> accumulator).
+				    temp_sum <= temp_sum + resize(data_in, N_BITS_TEMP);
 				end if;
-				
 			end if;
 		end if;
 	end process;

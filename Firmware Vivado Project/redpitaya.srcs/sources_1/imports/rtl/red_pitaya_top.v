@@ -312,9 +312,9 @@ adc_data_clk_pll adc_data_clk_pll_inst (
     .clk_adc_1x(adc_clk),       // ADC clock 125 MHz
     .clk_adc_2x(adc_clk_2x),    // ADC clock 250 MHz
     .clk_adc_3x(adc_clk_3x),    // ADC clock 375 MHz
-    .clk_dac_iqsel(dac_clk_iqsel),    // DAC IQSEL clock 62.5 MHz
-    .clk_dac_iqclk(dac_clk_iqclk),    // DAC IQCLK clock 125 MHz +90 DGR (2 ns)
-    .clk_dac_iqwrt(dac_clk_iqwrt),    // DAC clock 125 MHz +112.5 DGR (2.5 ns)
+    .clk_dac_iqsel(dac_clk_iqsel),    // DAC IQSEL clock 125 MHz
+    .clk_dac_iqclk(dac_clk_iqclk),    // DAC IQCLK clock 250 MHz -45 DGR (-.5 ns)
+    .clk_dac_iqwrt(dac_clk_iqwrt),    // DAC clock 250 MHz
     .clk_out_10MHz(clk_out_10),    // Daisy chain clock 10 MHz
     .locked(pll_locked)
 );
@@ -410,8 +410,8 @@ begin
 end
 
 // DDR outputs
-//ODDR oddr_dac_clk          (.Q(dac_clk_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_iqwrt), .CE(1'b1), .R(1'b0   ), .S(1'b0));
-//ODDR oddr_dac_wrt          (.Q(dac_wrt_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_iqclk), .CE(1'b1), .R(1'b0   ), .S(1'b0));
+//ODDR oddr_dac_clk          (.Q(dac_clk_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_iqclk), .CE(1'b1), .R(1'b0   ), .S(1'b0));
+//ODDR oddr_dac_wrt          (.Q(dac_wrt_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_iqwrt), .CE(1'b1), .R(1'b0   ), .S(1'b0));
 //ODDR oddr_dac_sel          (.Q(dac_sel_o), .D1(1'b1     ), .D2(1'b0     ), .C(dac_clk_iqsel), .CE(1'b1), .R(dac_rst), .S(1'b0));
 //ODDR oddr_dac_rst          (.Q(dac_rst_o), .D1(dac_rst  ), .D2(dac_rst  ), .C(dac_clk_iqsel), .CE(1'b1), .R(1'b0   ), .S(1'b0));
 //ODDR oddr_dac_dat [14-1:0] (.Q(dac_dat_o), .D1(dac_dat_b), .D2(dac_dat_a), .C(dac_clk_iqsel), .CE(1'b1), .R(dac_rst), .S(1'b0));
@@ -421,10 +421,10 @@ ODDR #(
   .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
 ) ODDR_inst_oddr_dac_clk (
   .Q(dac_clk_o),   // 1-bit DDR output
-  .C(dac_clk_iqclk),   // IQCLK clock input, 125 MHz + 90 DGR (+2 ns)
+  .C(dac_clk_iqclk),   // IQCLK clock input, 250 MHz -45 DGR (-.5 ns)
   .CE(1'b1), // Clock enabled
-  .D1(1'b1), // Clock passthrough input (positive edge)
-  .D2(1'b0), // Clock passthrough input (negative edge)
+  .D1(1'b0), // Clock passthrough input (positive edge)
+  .D2(1'b1), // Clock passthrough input (negative edge)
   .R(1'b0)   // No reset
 );
 
@@ -433,10 +433,10 @@ ODDR #(
   .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
 ) ODDR_inst_oddr_dac_wrt (
   .Q(dac_wrt_o),   // 1-bit DDR output
-  .C(dac_clk_iqwrt),   // IQWRT clock input
+  .C(dac_clk_iqwrt),   // IQWRT clock input, 250 MHz
   .CE(1'b1), // Clock enabled
-  .D1(1'b1), // Clock passthrough input (positive edge)
-  .D2(1'b0), // Clock passthrough input (negative edge)
+  .D1(1'b0), // Clock passthrough input (positive edge)
+  .D2(1'b1), // Clock passthrough input (negative edge)
   .R(1'b0)   // No reset
 );
 
@@ -445,11 +445,11 @@ ODDR #(
   .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
 ) ODDR_inst_oddr_dac_sel (
   .Q(dac_sel_o),   // 1-bit DDR output
-  .C(dac_clk_iqsel),   // IQSEL clock input, 62.5 MHz
-  .CE(1'b1), // Clock enabled
-  .D1(1'b1), // Clock passthrough input (positive edge)
-  .D2(1'b0), // Clock passthrough input (negative edge)
-  .R(1'b0)   // No reset
+  .C(dac_clk_iqsel),   // IQSEL clock input, 125 MHz
+  .CE(1'b1),    // Clock enabled
+  .D1(1'b1),    // Clock passthrough input (positive edge)
+  .D2(1'b0),    // Clock passthrough input (negative edge)
+  .R(dac_rst)   // DAC reset
 );
 
 // DAC Data DDR Output Registers
@@ -457,11 +457,11 @@ ODDR #(
   .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
 ) ODDR_inst_oddr_dac_dat[14-1:0] (
   .Q(dac_dat_o),        // 14-bit DDR output
-  .C(dac_clk_iqsel),    // IQSEL clock input, 62.5 MHz
+  .C(dac_clk_iqsel),    // IQSEL clock input, 125 MHz
   .CE(1'b1),            // Clock enabled
   .D1(dac_dat_b),       // 14-bit data input (positive edge)
   .D2(dac_dat_a),       // 14-bit data input (negative edge)
-  .R(1'b0)              // No reset
+  .R(dac_rst)           // DAC reset
 );
 
 // DAC IQRESET DDR Output Register

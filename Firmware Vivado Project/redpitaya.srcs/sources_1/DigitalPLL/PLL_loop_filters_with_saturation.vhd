@@ -200,7 +200,8 @@ begin
     
 	-- Proportionnal branch
 	----------------------------------------------------------------
-	-- ***describe***
+	-- The input frequency error is multiplied by the proportional gain and then scaled
+	--     by the proportional division factor to produce the correction term.
 	--
 	-- p_out = saturate((data_in*gain_p)/2^N_DIVIDE_P)
 	-- 5 total clock cycles of delay
@@ -245,7 +246,8 @@ begin
 	
 	-- Integrator branch
 	----------------------------------------------------------------
-	-- ***describe***
+	-- The input frequency error is multiplied by the integral gain, cumulatively summed,
+	--     and then scaled by the integral division factor to produce the correction term.
 	--
 	-- i_out = saturate(cumsum(data_in*gain_i))/2^N_DIVIDE_I
 	-- 8 total clock cycles of delay
@@ -294,10 +296,11 @@ begin
     
 	-- Double-Integrator branch
 	----------------------------------------------------------------
-	-- ***describe***
-	-- We use the phase_error_accumulator result, scale the result, then accumulate again, and finally divide by N_DIVIDE_II.
+	-- The input frequency error is multiplied by the double integral gain, successively
+	--     passed through two cumulative summers, and then scaled by the double integral
+	--     division factor to produce the correction term.
 	--
-	-- gain_ii/2^N_DIVIDE_II * cumsum(cumsum(data_in))
+	-- ii_out = saturate(cumsum(cumsum(gain_ii*data_in))/2^N_DIVIDE_II
 	-- 10 total clock cycles of delay
 	
 	-- Multiplication of data_in by gain_ii:
@@ -362,9 +365,11 @@ begin
     
 	-- Differentiator with filter branch
 	----------------------------------------------------------------
-    -- ***describe***
+    -- The difference of the input frequency error is passed through an IIR low pass
+    --      filter, multiplied by the derivative gain, and then scaled by the derivative
+    --      division factor to produce the correction term.
     --
-    -- d_out = saturate((gain_d*diff(exp_avg(data_in, coef_d_filter)))/2^N_DIVIDE_D)
+    -- d_out = saturate((gain_d*exp_avg(diff(data_in), coef_d_filter)))/2^N_DIVIDE_D)
     -- 12 total clock cycles of delay
     
     -- Rescale data_in for input into the exponential filter:
@@ -438,8 +443,6 @@ begin
     
 	-- Output summing node
 	----------------------------------------------------------------
-	-- ***describe***
-    --
     -- data_out = saturate(p_out + i_out + ii_out + d_out)
     -- X total clock cycles of delay
     
