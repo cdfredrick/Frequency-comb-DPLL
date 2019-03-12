@@ -37,7 +37,6 @@ entity integrator_with_saturation is
 	Generic (
 		N_INPUT : integer := 20;
 		N_OUTPUT : integer := 16
-		
 	);
     Port (
         clk : in  STD_LOGIC;

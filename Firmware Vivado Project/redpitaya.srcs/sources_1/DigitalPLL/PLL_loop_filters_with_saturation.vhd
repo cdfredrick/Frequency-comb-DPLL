@@ -106,6 +106,9 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 	-----------------------------------------------------------------------
 	constant no_clear : std_logic := '0';
 	
+	-- N Bits for each branch's output = N_OUTPUT+1 (extra bit so that each branch can output the full range if needed)
+	constant N_OUTPUT_B : integer := N_OUTPUT + 1;
+	
 	-- Phase residuals monitor
 	constant N_BITS_PHASE_RESULT   : integer := 32;
 	signal phase_error_accumulator : signed(N_BITS_PHASE_RESULT-1 downto 0) := (others => '0');
@@ -116,27 +119,25 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 	-- P branch signals
 	signal p_mult_out                              : signed(42-1 downto 0) := (others => '0');
 	signal p_mult_divided                          : signed((p_mult_out'length-N_DIVIDE_P)-1 downto 0) := (others => '0');
-	signal p_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal p_out                                   : signed(N_OUTPUT_B-1 downto 0) := (others => '0');
 	signal p_railed_positive, p_railed_negative    : std_logic := '0';
 	
 	-- I branch signals
 	signal i_mult_out                              : signed(74-1 downto 0) := (others => '0');
-	signal i_offset_in                             : signed((N_OUTPUT+N_DIVIDE_I)-1 downto 0) := (others => '0');
-	signal i_accumulator_out                       : signed((N_OUTPUT+N_DIVIDE_I)-1 downto 0) := (others => '0');
+	signal i_offset_in                             : signed((N_OUTPUT_B+N_DIVIDE_I)-1 downto 0) := (others => '0');
+	signal i_accumulator_out                       : signed((N_OUTPUT_B+N_DIVIDE_I)-1 downto 0) := (others => '0');
 	signal i_railed_positive, i_railed_negative    : std_logic := '0';
-	signal i_accumulator_divided                   : signed((i_accumulator_out'length-N_DIVIDE_I)-1 downto 0) := (others => '0');
-	signal i_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal i_out                                   : signed(N_OUTPUT_B-1 downto 0) := (others => '0');
 
 	-- II branch signals
 	signal ii_mult_out                                                 : signed(74-1 downto 0) := (others => '0');
-	signal ii_1st_stage_offset_in                                      : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
-	signal ii_1st_stage_accumulator_out                                : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_1st_stage_offset_in                                      : signed((N_OUTPUT_B+N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_1st_stage_accumulator_out                                : signed((N_OUTPUT_B+N_DIVIDE_II)-1 downto 0) := (others => '0');
 	signal ii_1st_stage_railed_positive, ii_1st_stage_railed_negative  : std_logic := '0';
-	signal ii_2nd_stage_offset_in                                      : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
-	signal ii_2nd_stage_accumulator_out                                : signed((N_OUTPUT+N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_2nd_stage_offset_in                                      : signed((N_OUTPUT_B+N_DIVIDE_II)-1 downto 0) := (others => '0');
+	signal ii_2nd_stage_accumulator_out                                : signed((N_OUTPUT_B+N_DIVIDE_II)-1 downto 0) := (others => '0');
 	signal ii_railed_positive, ii_railed_negative                      : std_logic := '0';
-	signal ii_2nd_stage_accumulator_divided                            : signed((ii_2nd_stage_accumulator_out'length-N_DIVIDE_II)-1 downto 0) := (others => '0');
-	signal ii_out                                                      : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal ii_out                                                      : signed(N_OUTPUT_B-1 downto 0) := (others => '0');
 	
     -- D branch signals
     -- signal data_in_dly : std_logic_vector(9 downto 0) := (others => '0');
@@ -145,12 +146,12 @@ architecture Behavioral of PLL_loop_filters_with_saturation is
 	signal d_diff                                  : signed(14-1 downto 0)       := (others => '0');
 	signal d_filt_out                              : signed(32-1 downto 0)       := (others => '0');
 	signal d_mult_out                              : signed(64-1 downto 0)       := (others => '0');
-	signal d_mult_divided                          : signed((64-18-3-N_DIVIDE_D)-1 downto 0)       := (others => '0');
-	signal d_out                                   : signed(N_OUTPUT-1 downto 0) := (others => '0');
+	signal d_mult_divided                          : signed((d_mult_out'length-18-3-N_DIVIDE_D)-1 downto 0)  := (others => '0');
+	signal d_out                                   : signed(N_OUTPUT_B-1 downto 0) := (others => '0');
 	signal d_railed_positive, d_railed_negative    : std_logic := '0';
 	
 	-- Summing node signals
-	signal output_sum                                      : signed((N_OUTPUT+2)-1 downto 0) := (others => '0');   -- the extra two bits are to handle the full range result without overflowing
+	signal output_sum                                      : signed((N_OUTPUT_B+2)-1 downto 0) := (others => '0');   -- the extra two bits are to handle the full range result without overflowing
 	signal sum_railed_negative, sum_railed_positive        : std_logic := '0'; -- this is used for the anti-windup behavior (we stop integrating if the sum is railed, even if the integrator isn't)
 	
 	-- Flags which indicate internal state
@@ -226,7 +227,7 @@ begin
 	p_mult_divided <= p_mult_out(p_mult_out'length-1 downto N_DIVIDE_P);
 	
 	-- Saturation for P branch:
-	-- Keeps p_mult_divided's N_OUTPUT LSBs
+	-- Keeps p_mult_divided's N_OUTPUT_B LSBs
 	-- p_out = saturate(p_mult_divided)
 	-- 1 clock cycle of delay
 	pll_p_saturation: entity work.resize_with_saturation
@@ -266,7 +267,7 @@ begin
 	);
     
     -- Integration of i_mult_out with saturation and anti-windup:
-    -- Output saturates at (N_OUTPUT+N_DIVIDE_I) bits
+    -- Output saturates at (N_OUTPUT_B+N_DIVIDE_I) bits
     -- i_accumulator_out = saturate(cumsum(i_mult_out))
     -- 2 clock cycle of delay
     i_offset_in <= shift_left(resize(offset_in, i_accumulator_out'length), N_DIVIDE_I);
@@ -288,7 +289,7 @@ begin
 	);
 	
 	-- Division of i_accumulator_out by 2^N_DIVIDE_I:
-	-- Keeps i_accumulator_out's N_OUTPUT MSBs
+	-- Keeps i_accumulator_out's N_OUTPUT_B MSBs
 	-- i_out = i_accumulator_out/2^N_DIVIDE_I
 	-- 0 clock cycles of delay
 	i_out <= i_accumulator_out(i_accumulator_out'length-1 downto N_DIVIDE_I);
@@ -317,7 +318,7 @@ begin
 	);
     
     -- 1st stage integration of ii_mult_out with saturation and anti-windup:
-    -- Output saturates at (N_OUTPUT+N_DIVIDE_II) bits
+    -- Output saturates at (N_OUTPUT_B+N_DIVIDE_II) bits
     -- ii_1st_stage_accumulator_out = saturate(cumsum(ii_mult_out))
     -- 2 clock cycle of delay
 	ii_1st_stage_integrator_saturation : entity work.integrator_with_saturation
@@ -327,8 +328,8 @@ begin
 	) port map (
 		clk                 => clk,
 		sclr                => synchronous_clear,
-		railed_positive     => ii_railed_positive,
-		railed_negative     => ii_railed_negative,
+		railed_positive     => sum_railed_positive,
+		railed_negative     => sum_railed_negative,
 		data_in             => ii_mult_out,
 		initial_offset      => ii_1st_stage_offset_in,
 		data_out            => ii_1st_stage_accumulator_out,
@@ -337,7 +338,7 @@ begin
 	);
 	
 	-- 2nd stage integration of ii_mult_out with saturation and anti-windup:
-    -- Output saturates at (N_OUTPUT+N_DIVIDE_II) bits
+    -- Output saturates at (N_OUTPUT_B+N_DIVIDE_II) bits
     -- ii_2nd_stage_accumulator_out = saturate(cumsum(ii_1st_stage_accumulator_out))
     -- 2 clock cycle of delay
 	ii_2nd_stage_integrator_saturation : entity work.integrator_with_saturation
@@ -423,7 +424,7 @@ begin
 	d_mult_divided <= d_mult_out(d_mult_out'length-1 downto (N_DIVIDE_D+18+3));
 	
 	-- Saturation for D branch:
-	-- Keeps d_mult_divided's N_OUTPUT LSBs
+	-- Keeps d_mult_divided's N_OUTPUT_B LSBs
 	-- d_out = saturate(d_mult_divided)
 	-- 1 clock cycle of delay
     d_saturation_inst: entity work.resize_with_saturation
@@ -448,13 +449,13 @@ begin
     
 	-- Sum of the separate branches without overflow:
 	-- This assumes that all three inputs have been properly saturated beforehand so we need only 2 extra bits to handle the full result.
-	-- Output is (N_OUTPUT+2) bits
+	-- Output is (N_OUTPUT_B+2) bits
 	-- output_sum = p_out + i_out + ii_out + d_out
 	-- 0 clock cycles of delay
-	output_sum <=	resize(p_out,			N_OUTPUT+2) +
-	                resize(i_out,			N_OUTPUT+2) +
-	                resize(ii_out,			N_OUTPUT+2) +
-	                resize(d_out,			N_OUTPUT+2);
+	output_sum <=	resize(p_out,      output_sum'length) +
+	                resize(i_out,      output_sum'length) +
+	                resize(ii_out,     output_sum'length) +
+	                resize(d_out,      output_sum'length);
 	
 	-- Saturation for the output sum:
 	-- Keeps output_sum's N_OUTPUT LSBs
@@ -462,7 +463,7 @@ begin
 	-- 1 clock cycle of delay
     data_out_saturation: entity work.resize_with_saturation
 	GENERIC MAP (
-		N_INPUT => N_OUTPUT+2,
+		N_INPUT => output_sum'length,
 		N_OUTPUT => N_OUTPUT
 	)
 	PORT MAP (
@@ -489,8 +490,7 @@ begin
 			saturated_low	 <= saturated_low_internal;
 		end if;
 	end process;
-	
 
-	
+
 end Behavioral;
 
