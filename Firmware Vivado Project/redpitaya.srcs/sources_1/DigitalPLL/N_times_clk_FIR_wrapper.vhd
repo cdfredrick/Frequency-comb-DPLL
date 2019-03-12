@@ -15,8 +15,8 @@ port (
 	clk_times_N    : in  std_logic;
 	
 	-- these two signals are on the clk_times_1 clock domain
-	data_in        : in  std_logic_vector(N_BITS_IN-1 downto 0);
-	data_out       : out std_logic_vector(N_BITS_OUT-1 downto 0)
+	data_in        : in  signed(N_BITS_IN-1 downto 0);
+	data_out       : out signed(N_BITS_OUT-1 downto 0)
 
 	);
 end entity;
@@ -43,16 +43,16 @@ architecture Behavioral of N_times_clk_FIR_wrapper is
 	signal flag_times_N_d1             : std_logic                               := '0';
 	-- Data when first transfered to the "times N" clk domain
 	signal data_times_N_clk_enable     : std_logic                               := '0';
-	signal data_times_N                : std_logic_vector(N_BITS_IN-1 downto 0)  := (others => '0');
+	signal data_times_N                : signed(N_BITS_IN-1 downto 0)  := (others => '0');
 	
 	-- extra register stage to improve timings, since we are trying to reach as close as possible to the full rate of the DSP48 blocks.
 	signal data_times_N_clk_enable_reg : std_logic                               := '0';
-	signal data_times_N_reg            : std_logic_vector(N_BITS_IN-1 downto 0)  := (others => '0');
+	signal data_times_N_reg            : signed(N_BITS_IN-1 downto 0)  := (others => '0');
 	
 	-- output data
-	signal data_out_times_N            : std_logic_vector(N_BITS_OUT-1 downto 0) := (others => '0');
-	signal data_out_times_N_reg        : std_logic_vector(N_BITS_OUT-1 downto 0) := (others => '0');
-	signal data_out_times_1            : std_logic_vector(N_BITS_OUT-1 downto 0) := (others => '0');
+	signal data_out_times_N            : signed(N_BITS_OUT-1 downto 0) := (others => '0');
+	signal data_out_times_N_reg        : signed(N_BITS_OUT-1 downto 0) := (others => '0');
+	signal data_out_times_1            : signed(N_BITS_OUT-1 downto 0) := (others => '0');
 	
 begin
 
@@ -89,7 +89,7 @@ begin
 			aclk               => clk_times_N,
 			s_axis_data_tvalid => data_times_N_clk_enable_reg,
 			s_axis_data_tready => open,	-- we don't care, the core should always be ready
-			s_axis_data_tdata  => data_times_N_reg,
+			s_axis_data_tdata  => STD_LOGIC_VECTOR(data_times_N_reg),
 			m_axis_data_tvalid => m_axis_data_tvalid,
 			m_axis_data_tdata  => m_axis_data_tdata
 		);
@@ -103,7 +103,7 @@ begin
 		if rising_edge(clk_times_N) then
 
 			if m_axis_data_tvalid = '1' then
-				data_out_times_N <= m_axis_data_tdata;
+				data_out_times_N <= signed(m_axis_data_tdata);
 			end if;
 			-- we add an extra register stage here to help timing
 			data_out_times_N_reg <= data_out_times_N;

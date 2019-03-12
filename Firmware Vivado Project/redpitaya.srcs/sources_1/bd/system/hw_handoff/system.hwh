@@ -1,9 +1,94 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Thu Feb 21 13:43:27 2019" VIVADOVERSION="2018.3">
+<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Sat Mar  2 21:13:39 2019" VIVADOVERSION="2018.3">
 
   <SYSTEMINFO ARCH="zynq" DEVICE="7z010" NAME="system" PACKAGE="clg400" SPEEDGRADE="-1"/>
 
   <EXTERNALPORTS>
+    <PORT CLKFREQUENCY="125000000" DIR="I" NAME="M_AXI_GP0_ACLK" SIGIS="clk" SIGNAME="External_Ports_M_AXI_GP0_ACLK">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="M_AXI_GP0_ACLK"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT CLKFREQUENCY="125000000" DIR="O" NAME="FCLK_CLK0" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK0">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK0"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT CLKFREQUENCY="250000000" DIR="O" NAME="FCLK_CLK1" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK1">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK1"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT CLKFREQUENCY="50000000" DIR="O" NAME="FCLK_CLK2" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK2">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK2"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT CLKFREQUENCY="200000000" DIR="O" NAME="FCLK_CLK3" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK3">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK3"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="O" NAME="FCLK_RESET0_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET0_N">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET0_N"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="O" NAME="FCLK_RESET1_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET1_N">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET1_N"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="O" NAME="FCLK_RESET2_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET2_N">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET2_N"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="O" NAME="FCLK_RESET3_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET3_N">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET3_N"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT CLKFREQUENCY="125000000" DIR="I" NAME="S_AXI_HP0_aclk" SIGIS="clk" SIGNAME="External_Ports_S_AXI_HP0_aclk">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP0_ACLK"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT CLKFREQUENCY="125000000" DIR="I" NAME="S_AXI_HP1_aclk" SIGIS="clk" SIGNAME="External_Ports_S_AXI_HP1_aclk">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP1_ACLK"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="IO" LEFT="53" NAME="FIXED_IO_mio" RIGHT="0" SIGIS="undef" SIGNAME="processing_system7_MIO">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="MIO"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="IO" NAME="FIXED_IO_ddr_vrn" SIGIS="undef" SIGNAME="processing_system7_DDR_VRN">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="DDR_VRN"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="IO" NAME="FIXED_IO_ddr_vrp" SIGIS="undef" SIGNAME="processing_system7_DDR_VRP">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="DDR_VRP"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="IO" NAME="FIXED_IO_ps_srstb" SIGIS="undef" SIGNAME="processing_system7_PS_SRSTB">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="PS_SRSTB"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="IO" NAME="FIXED_IO_ps_clk" SIGIS="undef" SIGNAME="processing_system7_PS_CLK">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="PS_CLK"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="IO" NAME="FIXED_IO_ps_porb" SIGIS="undef" SIGNAME="processing_system7_PS_PORB">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="processing_system7" PORT="PS_PORB"/>
+      </CONNECTIONS>
+    </PORT>
     <PORT DIR="IO" NAME="DDR_cas_n" SIGIS="undef" SIGNAME="processing_system7_DDR_CAS_n">
       <CONNECTIONS>
         <CONNECTION INSTANCE="processing_system7" PORT="DDR_CAS_n"/>
@@ -77,36 +162,6 @@
     <PORT DIR="IO" LEFT="3" NAME="DDR_dqs_p" RIGHT="0" SIGIS="undef" SIGNAME="processing_system7_DDR_DQS">
       <CONNECTIONS>
         <CONNECTION INSTANCE="processing_system7" PORT="DDR_DQS"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="IO" LEFT="53" NAME="FIXED_IO_mio" RIGHT="0" SIGIS="undef" SIGNAME="processing_system7_MIO">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="MIO"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="IO" NAME="FIXED_IO_ddr_vrn" SIGIS="undef" SIGNAME="processing_system7_DDR_VRN">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="DDR_VRN"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="IO" NAME="FIXED_IO_ddr_vrp" SIGIS="undef" SIGNAME="processing_system7_DDR_VRP">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="DDR_VRP"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="IO" NAME="FIXED_IO_ps_srstb" SIGIS="undef" SIGNAME="processing_system7_PS_SRSTB">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="PS_SRSTB"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="IO" NAME="FIXED_IO_ps_clk" SIGIS="undef" SIGNAME="processing_system7_PS_CLK">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="PS_CLK"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="IO" NAME="FIXED_IO_ps_porb" SIGIS="undef" SIGNAME="processing_system7_PS_PORB">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="PS_PORB"/>
       </CONNECTIONS>
     </PORT>
     <PORT DIR="O" NAME="M_AXI_GP0_arvalid" SIGIS="undef" SIGNAME="processing_system7_M_AXI_GP0_ARVALID">
@@ -489,6 +544,36 @@
         <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP0_WSTRB"/>
       </CONNECTIONS>
     </PORT>
+    <PORT DIR="I" NAME="Vaux0_v_n" SIGIS="undef" SIGNAME="xadc_vauxn0">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="xadc" PORT="vauxn0"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="I" NAME="Vaux0_v_p" SIGIS="undef" SIGNAME="xadc_vauxp0">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="xadc" PORT="vauxp0"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="I" NAME="Vaux1_v_n" SIGIS="undef" SIGNAME="xadc_vauxn1">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="xadc" PORT="vauxn1"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="I" NAME="Vaux1_v_p" SIGIS="undef" SIGNAME="xadc_vauxp1">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="xadc" PORT="vauxp1"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="I" NAME="Vaux8_v_n" SIGIS="undef" SIGNAME="xadc_vauxn8">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="xadc" PORT="vauxn8"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="I" NAME="Vaux8_v_p" SIGIS="undef" SIGNAME="xadc_vauxp8">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="xadc" PORT="vauxp8"/>
+      </CONNECTIONS>
+    </PORT>
     <PORT DIR="O" NAME="S_AXI_HP1_arready" SIGIS="undef" SIGNAME="processing_system7_S_AXI_HP1_ARREADY">
       <CONNECTIONS>
         <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP1_ARREADY"/>
@@ -679,36 +764,6 @@
         <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP1_WSTRB"/>
       </CONNECTIONS>
     </PORT>
-    <PORT DIR="I" NAME="Vaux0_v_n" SIGIS="undef" SIGNAME="xadc_vauxn0">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="xadc" PORT="vauxn0"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="I" NAME="Vaux0_v_p" SIGIS="undef" SIGNAME="xadc_vauxp0">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="xadc" PORT="vauxp0"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="I" NAME="Vaux1_v_n" SIGIS="undef" SIGNAME="xadc_vauxn1">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="xadc" PORT="vauxn1"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="I" NAME="Vaux1_v_p" SIGIS="undef" SIGNAME="xadc_vauxp1">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="xadc" PORT="vauxp1"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="I" NAME="Vaux8_v_n" SIGIS="undef" SIGNAME="xadc_vauxn8">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="xadc" PORT="vauxn8"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="I" NAME="Vaux8_v_p" SIGIS="undef" SIGNAME="xadc_vauxp8">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="xadc" PORT="vauxp8"/>
-      </CONNECTIONS>
-    </PORT>
     <PORT DIR="I" NAME="Vaux9_v_n" SIGIS="undef" SIGNAME="xadc_vauxn9">
       <CONNECTIONS>
         <CONNECTION INSTANCE="xadc" PORT="vauxn9"/>
@@ -727,61 +782,6 @@
     <PORT DIR="I" NAME="Vp_Vn_v_p" SIGIS="undef" SIGNAME="xadc_vp_in">
       <CONNECTIONS>
         <CONNECTION INSTANCE="xadc" PORT="vp_in"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="125000000" DIR="I" NAME="M_AXI_GP0_ACLK" SIGIS="clk" SIGNAME="External_Ports_M_AXI_GP0_ACLK">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="M_AXI_GP0_ACLK"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="125000000" DIR="O" NAME="FCLK_CLK0" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK0">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK0"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="250000000" DIR="O" NAME="FCLK_CLK1" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK1">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK1"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="50000000" DIR="O" NAME="FCLK_CLK2" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK2">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK2"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="200000000" DIR="O" NAME="FCLK_CLK3" SIGIS="clk" SIGNAME="processing_system7_FCLK_CLK3">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_CLK3"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="O" NAME="FCLK_RESET0_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET0_N">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET0_N"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="O" NAME="FCLK_RESET1_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET1_N">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET1_N"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="O" NAME="FCLK_RESET2_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET2_N">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET2_N"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT DIR="O" NAME="FCLK_RESET3_N" SIGIS="rst" SIGNAME="processing_system7_FCLK_RESET3_N">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="FCLK_RESET3_N"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="125000000" DIR="I" NAME="S_AXI_HP0_aclk" SIGIS="clk" SIGNAME="External_Ports_S_AXI_HP0_aclk">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP0_ACLK"/>
-      </CONNECTIONS>
-    </PORT>
-    <PORT CLKFREQUENCY="125000000" DIR="I" NAME="S_AXI_HP1_aclk" SIGIS="clk" SIGNAME="External_Ports_S_AXI_HP1_aclk">
-      <CONNECTIONS>
-        <CONNECTION INSTANCE="processing_system7" PORT="S_AXI_HP1_ACLK"/>
       </CONNECTIONS>
     </PORT>
   </EXTERNALPORTS>

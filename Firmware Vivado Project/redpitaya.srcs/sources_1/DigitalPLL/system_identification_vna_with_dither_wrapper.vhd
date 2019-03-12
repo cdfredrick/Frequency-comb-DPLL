@@ -233,10 +233,7 @@ begin
 						stop <= cmd_data1(0);
 						trigger_dither <= cmd_data1(1);
 						bSquareWave <= cmd_data1(2);
-						
-						
-						
-						
+                        
 					when others =>
 						-- do nothing
 				end case;

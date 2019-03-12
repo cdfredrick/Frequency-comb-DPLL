@@ -50,7 +50,7 @@ architecture Behavioral of parallel_bus_register_32bits_or_less is
 --	signal local_bus_address		: std_logic_vector(15 downto 0);
 --	signal local_bus_data			: std_logic_vector(15 downto 0);
 
-	signal output						: std_logic_vector(REGISTER_SIZE-1 downto 0) := std_logic_vector(to_unsigned(REGISTER_DEFAULT_VALUE , REGISTER_SIZE));
+	signal output						: std_logic_vector(32-1 downto 0) := std_logic_vector(to_unsigned(REGISTER_DEFAULT_VALUE , 32));
 
 	signal update_flag_internal : std_logic := '0';
 	
@@ -62,13 +62,13 @@ begin
 			update_flag_internal <= '0';	-- default value
 			
 			if bus_strobe = '1' and bus_address = std_logic_vector(to_unsigned(ADDRESS, bus_address'length)) then
-				output <= bus_data(register_output'range);
+				output <= bus_data;
 				update_flag_internal <= '1';
 			end if;
 		end if;
 	end process;
 	
-	register_output <= output;
+	register_output <= output(register_output'range);
 	update_flag <= update_flag_internal;
 
 end Behavioral;

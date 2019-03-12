@@ -2,10 +2,10 @@
 <Root MajorVersion="0" MinorVersion="36">
   <CompositeFile CompositeFileTopName="system" CanBeSetAsTop="true" CanDisplayChildGraph="true">
     <Description>Composite Fileset</Description>
-    <Generation Name="SYNTHESIS" State="GENERATED" Timestamp="1550781808"/>
-    <Generation Name="IMPLEMENTATION" State="GENERATED" Timestamp="1550781808"/>
-    <Generation Name="SIMULATION" State="GENERATED" Timestamp="1550781808"/>
-    <Generation Name="HW_HANDOFF" State="GENERATED" Timestamp="1550781808"/>
+    <Generation Name="SYNTHESIS" State="GENERATED" Timestamp="1551586419"/>
+    <Generation Name="IMPLEMENTATION" State="GENERATED" Timestamp="1551586419"/>
+    <Generation Name="SIMULATION" State="GENERATED" Timestamp="1551586419"/>
+    <Generation Name="HW_HANDOFF" State="GENERATED" Timestamp="1551586419"/>
     <FileCollection Name="SOURCES" Type="SOURCES">
       <File Name="ip\system_axi_protocol_converter_0_0\system_axi_protocol_converter_0_0.xci" Type="IP">
         <Instance HierarchyPath="axi_protocol_converter_0"/>

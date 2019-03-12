@@ -15,7 +15,6 @@ from scipy.signal import lfilter
 from scipy.signal import decimate
 import copy
 
-# For make_sure_path_exists()
 import os
 import errno
 
@@ -24,7 +23,7 @@ import pyqtgraph as pg
 
 class DisplayTransferFunctionWindow(QtGui.QWidget):
 
-        
+
     def __init__(self, window_number):
         super(DisplayTransferFunctionWindow, self).__init__()
 
@@ -46,7 +45,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         #print('DisplayTransferFunctionWindow:addCurve(): 2')
         self.writeOutputFile(transfer_function_uncalibrated, frequency_axis, vertical_units, bCalibrated=False) # we always save the uncalibrated TF regardless of whether we apply cal or not
         #print('DisplayTransferFunctionWindow:addCurve(): 3')
-        
+
         # Load and apply calibration data based on the measurement of the Red Pitaya's transfer function:
         if vertical_units == 'V/V':
             # the copy.copy() is not strictly needed since applying the calibration would create a copy, but this potentially avoids a mistake later if I bypass the calibration
@@ -100,7 +99,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         #                             Qt.QBrush(current_color),
         #                             Qt.QPen(current_color),
         #                             Qt.QSize(3, 3)))
-        
+
 
         self.updateGraph()
         return
@@ -110,10 +109,10 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         # load data files, the calibration data was measured in two consecutive runs
 #        data_highfreq = np.loadtxt(u'transfer_functions\\09_21_2016_14_40_32_no_004_cal_thru.txt', skiprows=1)
 #        data_lowfreq = np.loadtxt(u'transfer_functions\\09_21_2016_14_44_34_no_006_cal_thru.txt', skiprows=1)
-#        
+#
         data_highfreq = np.loadtxt(u'04_28_2017_16_11_37_no_000_cal_thru_high.txt', skiprows=1)
         data_lowfreq = np.loadtxt(u'04_28_2017_16_11_00_no_000_cal_thru_low.txt', skiprows=1)
-        
+
         # convert the data to complex and merge the two sets:
         use_lowfreq = (data_lowfreq[:, 0] < 300e3)
         use_highfreq = (data_highfreq[:, 0] >= 300e3)
@@ -132,13 +131,13 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         values_interpolated_complex = values_interpolated_real + 1j*values_interpolated_imag
         # apply calibration, the 0.5 is because the target value for the calibration dataset was an overall transfer function of 50 ohms/(50 ohms+50ohms) = 0.5
         return transfer_function * 0.5/values_interpolated_complex
-        
+
     def writeOutputFile(self, transfer_function, frequency_axis, vertical_units, bCalibrated=False):
-        
-        
+
+
         # Create the subdirectory if it doesn't exist:
         #print('DisplayTransferFunctionWindow:writeOutputFile(): 1')
-        self.make_sure_path_exists('transfer_functions')
+        os.makedirs('transfer_functions', exist_ok=True)
         #print('DisplayTransferFunctionWindow:writeOutputFile(): 2')
 
         # Open file for output
@@ -148,7 +147,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
             strCurrentName1 = self.strNameTemplate + ('_no_%03d_with_cal.txt' % (self.window_number))
         else:
             strCurrentName1 = self.strNameTemplate + ('_no_%03d.txt' % (self.window_number))
-        
+
         #print('DisplayTransferFunctionWindow:writeOutputFile(): 4')
 
         DAT = np.array([frequency_axis, np.real(transfer_function), np.imag(transfer_function)])
@@ -169,7 +168,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
 #        f_handle = open(strCurrentName1, 'w')
 #        np.savetxt(f_handle,np.column_stack(DAT))
 #        f_handle.close()
-            
+
     def closeEvent(self, event):
         self.bClosed = True
         event.accept()
@@ -184,12 +183,12 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         #self.qplt_mag.setAxisScaleEngine(Qwt.QwtPlot.xBottom, Qwt.QwtLog10ScaleEngine())
         self.qplt_mag.getPlotItem().setLogMode(x=True)
         #print('DisplayTransferFunctionWindow: initUI(): first plot widget created')
-        
+
         # plot_grid = Qwt.QwtPlotGrid()
         # plot_grid.setMajPen(Qt.QPen(Qt.Qt.black, 0, Qt.Qt.DotLine))
         # plot_grid.attach(self.qplt_mag)
         self.qplt_mag.showGrid(x=True, y=True)
-        
+
         self.colors_order = [
 [  0,   114,   189],
 [217,    83,    25],
@@ -198,30 +197,30 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
 [119,   172,    48],
 [ 77,   190,   238],
 [162,    20,    47],]
-        
+
         # Add a second QwtPlot to the UI:
-        
+
         self.qplt_phase = pg.PlotWidget()
         self.qplt_phase.setTitle('Phase response')
         #self.qplt_phase.setCanvasBackground(Qt.Qt.white)
         #self.qplt_phase.setAxisScaleEngine(Qwt.QwtPlot.xBottom, Qwt.QwtLog10ScaleEngine())
         self.qplt_phase.getPlotItem().setLogMode(x=True)
         #print('DisplayTransferFunctionWindow: initUI(): 2nd plot widget created')
-        
+
         # plot_grid = Qwt.QwtPlotGrid()
         # plot_grid.setMajPen(Qt.QPen(Qt.Qt.black, 0, Qt.Qt.DotLine))
         # plot_grid.attach(self.qplt_phase)
         self.qplt_phase.showGrid(x=True, y=True)
-        
+
         # create the lists to hold the curve objects as they get added to the plots:
         self.curve_mag_list = []
         self.curve_phase_list = []
-        
-        
+
+
         ######################################################################
         # Controls to adjust the model
         ######################################################################
-        
+
         # Units select
         units_label = Qt.QLabel('Units:')
         self.qcombo_units = Qt.QComboBox()
@@ -229,77 +228,77 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         self.qcombo_units.setCurrentIndex(0)
 #        self.qcombo_units.changeEvent.connect(self.updateGraph)
         self.qcombo_units.currentIndexChanged.connect(self.updateGraph)
-        
+
         self.qlabel_SeriesImpedance = Qt.QLabel('Series Impedance [Ohms]:')
         self.qedit_SeriesImpedance = Qt.QLineEdit('100e3')
         self.qedit_SeriesImpedance.editingFinished.connect(self.updateGraph)
-        
+
         self.qchk_display_model = Qt.QCheckBox('Display model')
         self.qchk_display_model.setChecked(False)
-        
+
         self.qchk_DDCFilter = Qt.QCheckBox('DDC sinc filter')
         self.qchk_DDCFilter.clicked.connect(self.updateGraph)
-        
+
         self.qradio_signp = Qt.QRadioButton('+ Sign')
         self.qradio_signp.setChecked(True)
         self.qradio_signn = Qt.QRadioButton('- Sign')
         button_group = Qt.QButtonGroup()
         button_group.addButton(self.qradio_signp)
         button_group.addButton(self.qradio_signn)
-        
+
         self.qradio_signp.clicked.connect(self.updateGraph)
         self.qradio_signn.clicked.connect(self.updateGraph)
-        
+
         # set the default DC gain to the value of the transfer function at the lowest frequency:
-        
+
         self.qlabel_k = Qt.QLabel('DC Gain [dB]')
         self.qedit_k = Qt.QLineEdit(str(0))
         self.qedit_k.setMaximumWidth(60)
         self.qedit_k.textChanged.connect(self.updateGraph)
-        
-        
+
+
         self.qlabel_f1 = Qt.QLabel('1st order poles')
         self.qedit_f1 = Qt.QLineEdit('20e3,600e3')
         self.qedit_f1.setMaximumWidth(120)
         self.qedit_f1.textChanged.connect(self.updateGraph)
-        
-        
-        
 
-        
+
+
+
+
         self.qlabel_f0 = Qt.QLabel('2nd order poles')
         self.qedit_f0 = Qt.QLineEdit('1.5e6')
         self.qedit_f0.setMaximumWidth(120)
         self.qedit_f0.textChanged.connect(self.updateGraph)
-        
+
         self.qlabel_zeta = Qt.QLabel('zeta')
         self.qedit_zeta = Qt.QLineEdit('0.1')
         self.qedit_zeta.setMaximumWidth(120)
         self.qedit_zeta.textChanged.connect(self.updateGraph)
-        
+
         self.qlabel_T = Qt.QLabel('Pure delay')
         self.qedit_T = Qt.QLineEdit('570e-9')
         self.qedit_T.setMaximumWidth(60)
         self.qedit_T.textChanged.connect(self.updateGraph)
-        
-        
-        
+
+
+
         self.qchk_controller = Qt.QCheckBox('Closed-loop prediction')
         self.qchk_controller.clicked.connect(self.updateGraph)
-        
-        
+
+
         self.qlabel_pgain = Qt.QLabel('P gain [dB]')
         self.qedit_pgain = Qt.QLineEdit('-100')
         self.qedit_pgain.setMaximumWidth(60)
         self.qedit_pgain.textChanged.connect(self.updateGraph)
-        
+
         self.qlabel_icorner = Qt.QLabel('I corner [Hz]')
         self.qedit_icorner = Qt.QLineEdit('0')
         self.qedit_icorner.setMaximumWidth(60)
         self.qedit_icorner.textChanged.connect(self.updateGraph)
-        
-        
-        
+
+
+
         self.qedit_comment = Qt.QTextEdit('')
 #        self.qedit_comment.setMaximumWidth(80)
         #self.qedit_comment.textChanged.connect(self.updateGraph)
@@ -308,21 +307,21 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
 
         # Put all the widgets into a grid layout
         grid = Qt.QGridLayout()
-        
+
 
         grid.addWidget(units_label, 0, 0)
         grid.addWidget(self.qcombo_units, 0, 1)
-        
+
         grid.addWidget(self.qlabel_SeriesImpedance, 1, 0)
         grid.addWidget(self.qedit_SeriesImpedance , 1, 1)
-        
-        
+
+
         # grid.addWidget(self.qchk_display_model    , 2, 1)
-        
-        
+
+
         # grid.addWidget(self.qradio_signp          , 3, 0)
         # grid.addWidget(self.qradio_signn          , 3, 1)
-        
+
         # grid.addWidget(self.qlabel_k              , 4, 0)
         # grid.addWidget(self.qedit_k               , 4, 1)
         # grid.addWidget(self.qlabel_f1             , 5, 0)
@@ -332,19 +331,19 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
 
         # grid.addWidget(self.qlabel_zeta           , 7, 0)
         # grid.addWidget(self.qedit_zeta            , 7, 1)
-        
+
         # grid.addWidget(self.qlabel_T              , 8, 0)
         # grid.addWidget(self.qedit_T               , 8, 1)
-        
-        # grid.addWidget(self.qchk_controller       , 9, 0, 1, 2)        
-        
+
+        # grid.addWidget(self.qchk_controller       , 9, 0, 1, 2)
+
         # grid.addWidget(self.qlabel_pgain          , 10, 0)
         # grid.addWidget(self.qedit_pgain           , 10, 1)
-        
+
         # grid.addWidget(self.qlabel_icorner        , 12, 0)
         # grid.addWidget(self.qedit_icorner         , 12, 1)
         # grid.addWidget(self.qchk_DDCFilter        , 13, 0, 1, 2)
-        
+
         grid.addWidget(self.qedit_comment         , 14, 0, 1, 2)
         grid.setRowStretch(15, 0)
 #        grid.addWidget(Qt.QLabel(''), 12, 0, 1, 2)
@@ -353,37 +352,37 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         vbox = Qt.QVBoxLayout()
         vbox.addWidget(self.qplt_mag)
         vbox.addWidget(self.qplt_phase)
-        
-        
+
+
         hbox = Qt.QHBoxLayout()
         hbox.addLayout(grid)
         hbox.addLayout(vbox, 1)
 #        hbox.setStretch(2, 1)
-        
+
         self.setLayout(hbox)
 
         # Adjust the size and position of the window
         self.resize(1200, 500)
         self.center()
-        self.setWindowTitle('Transfer function #%d' % self.window_number)    
+        self.setWindowTitle('Transfer function #%d' % self.window_number)
         self.show()
-        
+
     def center(self):
-        
+
         qr = self.frameGeometry()
         cp = QtGui.QDesktopWidget().availableGeometry().center()
 #        print()
 #        5435sdfsf
         qr.moveCenter(cp)
         self.move(QtGui.QDesktopWidget().availableGeometry().topLeft() + Qt.QPoint(800+100, 50))
-        
+
     def timerEvent(self, e):
-        
+
 #        print('timerEvent, timerID = %d' % self.timerID)
         self.displayFreqCounter()
-        
+
         return
-        
+
     def updateGraph(self):
 
         if self.qcombo_units.currentIndex() == 0:
@@ -400,9 +399,9 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         print("updateGraph: %d curves in list." % (len(self.curve_mag_list)))
         for kCurve in range(len(self.curve_mag_list)):
             print("updateGraph: curve %d of %d." % (kCurve, len(self.curve_mag_list)))
-            
+
             self.curve_phase_list[kCurve].setData(self.frequency_axis_list[kCurve], np.angle(sign*(self.transfer_function_list[kCurve])))  # phase graph is usually just the phase of the transfer function, except for a few scalings
-            
+
             if bGraphIndBs == True:
                 self.curve_mag_list[kCurve].setData(self.frequency_axis_list[kCurve], 20*np.log10(np.abs(self.transfer_function_list[kCurve])))
                 print("updateGraph: data set")
@@ -461,7 +460,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
                     self.qplt_mag.setLabel('left', 'Ohms')
                     self.qplt_mag.getPlotItem().setLogMode(y=True)
                     self.curve_phase_list[kCurve].setData(self.frequency_axis_list[kCurve], np.angle(sign*(unknown_impedance)))
-                    
+
                     print(kCurve)
                     print(len(self.curve_mag_list)-1)
                     if kCurve == len(self.curve_mag_list)-1:
@@ -470,7 +469,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
                             strNotes += '%.2e Hz: Z = %.2e + j*%.2e\n' % (self.frequency_axis_list[kCurve][kFreq], np.real(unknown_impedance[kFreq]), np.imag(unknown_impedance[kFreq]))
                         self.qedit_comment.setText(strNotes)
                         print(strNotes)
-                        
+
                 elif self.qcombo_units.currentIndex() == 6:
                     # 'Ohms, Shunt DUT, high-Z probe + Series source impedance'
                     try:
@@ -478,7 +477,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
                     except:
                         Zsource = 100e3+50.
                         pass
-                    
+
     #                load_impedance = (Zsource*(10.*self.transfer_function_list[kCurve]/(1-10.*self.transfer_function_list[kCurve])))
                     load_impedance = (-Zsource*(10.*self.transfer_function_list[kCurve]/(10.*self.transfer_function_list[kCurve]-1.)))
                     self.curve_mag_list[kCurve].setData(self.frequency_axis_list[kCurve], np.abs(load_impedance))
@@ -489,25 +488,16 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
                     #self.qplt_mag.setAxisScaleEngine(Qwt.QwtPlot.yLeft, Qwt.QwtLog10ScaleEngine())
 
                     self.curve_phase_list[kCurve].setData(self.frequency_axis_list[kCurve], np.angle(sign*(load_impedance)))
-                    
+
                     if kCurve == len(self.curve_mag_list)-1:
                         strNotes = ''
                         for kFreq in range(len(self.frequency_axis_list[kCurve])):
                             strNotes += '%.2e Hz: Z = %.2e + j*%.2e\n' % (self.frequency_axis_list[kCurve][kFreq], np.real(load_impedance[kFreq]), np.imag(load_impedance[kFreq]))
                         self.qedit_comment.setText(strNotes)
-                
+
             print("update curve complete.")
 
         #self.qplt_phase.setAxisTitle(Qwt.QwtPlot.yLeft, 'Phase [rad]')
         self.qplt_phase.setLabel('left', 'Phase [rad]')
         #self.qplt_mag.replot()
         #self.qplt_phase.replot()
-        
-    # From: http://stackoverflow.com/questions/273192/create-directory-if-it-doesnt-exist-for-file-write
-    def make_sure_path_exists(self, path):
-        try:
-            os.makedirs(path)
-        except OSError as exception:
-            if exception.errno != errno.EEXIST:
-                raise
-                

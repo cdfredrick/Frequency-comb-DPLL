@@ -36,25 +36,33 @@ entity resize_with_saturation is
 		N_INPUT : integer := 20;
 		N_OUTPUT : integer := 16
 	);
-    Port ( clk : in  STD_LOGIC;
-			  synchronous_clear : in std_logic;
-           data_in : in  STD_LOGIC_VECTOR (N_INPUT-1 downto 0);
-			  railed_positive : out std_logic;
-			  railed_negative : out std_logic;
-           data_out : out  STD_LOGIC_VECTOR (N_OUTPUT-1 downto 0));
+    Port (
+        clk : in  STD_LOGIC;
+        synchronous_clear : in std_logic;
+        data_in : in  signed(N_INPUT-1 downto 0);
+        railed_positive : out std_logic;
+        railed_negative : out std_logic;
+        data_out : out  signed(N_OUTPUT-1 downto 0)
+    );
 end resize_with_saturation;
 
 architecture Behavioral of resize_with_saturation is
-
+    -- Internal variables
+	-----------------------------------------------------------------------
 	constant MAX_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(1, N_OUTPUT), N_OUTPUT-1)-1;	-- (2^(N_OUTPUT-1)-1)
 	constant MIN_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(-1, N_OUTPUT), N_OUTPUT-1)+1;	-- (-2^(N_OUTPUT-1)+1), avoid "most negative number"
 
-	-- these signals have no other purpose than to give a default value to the outputs so that there are no undefined values in simulation
 	signal railed_positive_temp : std_logic := '0';
 	signal railed_negative_temp : std_logic := '0';
-	signal data_out_temp : STD_LOGIC_VECTOR (N_OUTPUT-1 downto 0) := (others => '0');
+	signal data_out_temp : signed(N_OUTPUT-1 downto 0) := (others => '0');
 
 begin
+    -- Resize with saturation and synchronous clear
+	----------------------------------------------------------------
+	-- ***describe***
+	--
+	-- data_out = saturate(data_in)
+	-- 1 total clock cycle of delay
 	process (clk)
 	begin
 		if rising_edge(clk) then
@@ -64,14 +72,14 @@ begin
 				railed_positive_temp <= '0';
 				railed_negative_temp <= '0';
 			else
-				if signed(data_in) > MAX_VALUE then
+				if data_in > MAX_VALUE then
 					-- Saturated positive
-					data_out_temp <= std_logic_vector(MAX_VALUE(data_out'range));
+					data_out_temp <= MAX_VALUE(data_out'range);
 					railed_positive_temp <= '1';
 					railed_negative_temp <= '0';
-				elsif signed(data_in) < MIN_VALUE then
+				elsif data_in < MIN_VALUE then
 					-- Saturated negative
-					data_out_temp <= std_logic_vector(MIN_VALUE(data_out'range));
+					data_out_temp <= MIN_VALUE(data_out'range);
 					railed_positive_temp <= '0';
 					railed_negative_temp <= '1';
 				else

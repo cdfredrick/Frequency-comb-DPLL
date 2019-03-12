@@ -34,8 +34,8 @@ entity boxcar_2_pts_filter is
 		INPUT_SIZE : integer := 16
 	);
     Port ( clk : in  STD_LOGIC;
-           data_input : in  STD_LOGIC_VECTOR(INPUT_SIZE-1 downto 0);
-           data_output : out  STD_LOGIC_VECTOR(INPUT_SIZE+1-1 downto 0));
+           data_input : in  signed(INPUT_SIZE-1 downto 0);
+           data_output : out  signed(INPUT_SIZE+1-1 downto 0));
 end boxcar_2_pts_filter;
 
 architecture Behavioral of boxcar_2_pts_filter is
@@ -57,8 +57,8 @@ begin
 			
 		end if;
 	end process;
-	in0 <= signed(data_input);
-	data_output <= std_logic_vector(sum_register);
+	in0 <= data_input;
+	data_output <= sum_register;
 	
 	
 end Behavioral;

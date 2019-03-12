@@ -37,8 +37,8 @@ Generic (
 	-- N_INTERNAL_BITS has to be > N_DATA_BITS + N_LOG2_TIME_CONSTANT_IN_SAMPLES
 );
     Port ( clk : in  STD_LOGIC;
-           data_in : in  STD_LOGIC_VECTOR (N_DATA_BITS-1 downto 0);
-           data_out : out  STD_LOGIC_VECTOR (N_DATA_BITS-1 downto 0));
+           data_in : in  signed(N_DATA_BITS-1 downto 0);
+           data_out : out  signed(N_DATA_BITS-1 downto 0));
 end first_order_IIR_highpass_filter;
 
 architecture Behavioral of first_order_IIR_highpass_filter is
@@ -52,14 +52,14 @@ begin
 		if rising_edge(clk) then
 			accumulator <= accumulator																	-- this, along with the next time is the leaky integration of the input
 								- shift_right(accumulator, N_LOG2_TIME_CONSTANT_IN_SAMPLES)	-- this makes the integrator leaky which makes it converge after approximately 2^N_LOG2_TIME_CONSTANT_IN_SAMPLES
-								+ shift_left(resize(signed(data_in), accumulator'length), N_INTERNAL_BITS-N_DATA_BITS-N_LOG2_TIME_CONSTANT_IN_SAMPLES-2);
+								+ shift_left(resize(data_in, accumulator'length), N_INTERNAL_BITS-N_DATA_BITS-N_LOG2_TIME_CONSTANT_IN_SAMPLES-2);
 
 			data_out_internal <= 
-							shift_left(resize(signed(data_in), accumulator'length), N_INTERNAL_BITS-N_DATA_BITS-2) - accumulator
+							shift_left(resize(data_in, accumulator'length), N_INTERNAL_BITS-N_DATA_BITS-2) - accumulator
 							+ shift_left(to_signed(1, accumulator'length), N_INTERNAL_BITS-N_DATA_BITS-2-1);
 		end if;
 	end process;
-	data_out <= std_logic_vector( resize( shift_right( data_out_internal, N_INTERNAL_BITS-N_DATA_BITS-2), data_out'length) );
+	data_out <= resize( shift_right( data_out_internal, N_INTERNAL_BITS-N_DATA_BITS-2), data_out'length);
 
 end Behavioral;
 

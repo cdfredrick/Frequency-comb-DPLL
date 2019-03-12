@@ -103,7 +103,7 @@ begin
 	parallel_bus_register_period: entity work.parallel_bus_register_32bits_or_less
 	Generic map (
 		REGISTER_SIZE => modulation_period_divided_by_4_minus_one'length,
-		REGISTER_DEFAULT_VALUE => 100e6/1e3/4-1,	-- about 1 kHz
+		REGISTER_DEFAULT_VALUE => 125e6/1e3/4-1,	-- about 1 kHz
 		ADDRESS => BASE_ADDRESS+1
 	)
 	Port map (

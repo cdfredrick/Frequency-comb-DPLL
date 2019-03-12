@@ -62,14 +62,14 @@
  */
 
 module red_pitaya_top (
-   // PS connections
+   // PS connections (Processing System)
    inout  wire  [54-1: 0] FIXED_IO_mio       ,
    inout  wire            FIXED_IO_ps_clk    ,
    inout  wire            FIXED_IO_ps_porb   ,
    inout  wire            FIXED_IO_ps_srstb  ,
    inout  wire            FIXED_IO_ddr_vrn   ,
    inout  wire            FIXED_IO_ddr_vrp   ,
-   // DDR
+   // DDR RAM
    inout  wire  [15-1: 0] DDR_addr           ,
    inout  wire  [ 3-1: 0] DDR_ba             ,
    inout  wire            DDR_cas_n          ,
@@ -86,41 +86,47 @@ module red_pitaya_top (
    inout  wire            DDR_reset_n        ,
    inout  wire            DDR_we_n           ,
 
-   // Red Pitaya periphery
-  
    // ADC
    input  wire  [16-1: 2] adc_dat_a_i        ,  // ADC CH1
    input  wire  [16-1: 2] adc_dat_b_i        ,  // ADC CH2
    input  wire            adc_clk_p_i        ,  // ADC data clock
    input  wire            adc_clk_n_i        ,  // ADC data clock
-   output wire  [ 2-1: 0] adc_clk_o          ,  // optional ADC clock source
+   //output wire  [ 2-1: 0] adc_clk_o          ,  // optional ADC clock source
    output wire            adc_cdcs_o         ,  // ADC clock duty cycle stabilizer
+   
    // DAC
    output wire  [14-1: 0] dac_dat_o          ,  // DAC combined data
    output wire            dac_wrt_o          ,  // DAC write
    output wire            dac_sel_o          ,  // DAC channel select
    output wire            dac_clk_o          ,  // DAC clock
    output wire            dac_rst_o          ,  // DAC reset
+   
    // PWM DAC
    output wire  [ 4-1: 0] dac_pwm_o          ,  // serial PWM DAC
+   
    // XADC
    input  wire  [ 5-1: 0] vinp_i             ,  // voltages p
    input  wire  [ 5-1: 0] vinn_i             ,  // voltages n
+   
    // Expansion connector
    inout  wire  [ 8-1: 0] exp_p_io           ,
    inout  wire  [ 8-1: 0] exp_n_io           ,
+   
    // SATA connector
    output wire  [ 2-1: 0] daisy_p_o          ,  // line 1 is clock capable
    output wire  [ 2-1: 0] daisy_n_o          ,
    input  wire  [ 2-1: 0] daisy_p_i          ,  // line 1 is clock capable
    input  wire  [ 2-1: 0] daisy_n_i          ,
+   
    // LED
    output wire  [ 8-1: 0] led_o       
 );
 
-//---------------------------------------------------------------------------------
+
+////////////////////////////////////////////////////////////////////////////////
+//  Connections to PS (Processing System)
+////////////////////////////////////////////////////////////////////////////////
 //
-//  Connections to PS
 
 wire  [  4-1: 0] fclk               ; //[0]-125MHz, [1]-250MHz, [2]-50MHz, [3]-200MHz
 wire  [  4-1: 0] frstn              ;
@@ -210,9 +216,12 @@ red_pitaya_ps i_ps (
   .ack_combine_o (ack_combine_t)
 );
 
+
 ////////////////////////////////////////////////////////////////////////////////
-// system bus decoder & multiplexer (it breaks memory addresses into 8 regions)
+// System Bus Decoder & Multiplexer
 ////////////////////////////////////////////////////////////////////////////////
+// Breaks memory addresses into 8 regions.
+//
 
 wire              sys_clk   = ps_sys_clk  ;
 wire              sys_rstn  = ps_sys_rstn ;
@@ -226,8 +235,23 @@ wire  [8* 1-1: 0] sys_err   ;
 wire  [8* 1-1: 0] sys_ack   ;
 wire  [8   -1: 0] sys_cs    ;
 
-assign sys_cs = 8'h01 << sys_addr[22:20];
+wire [32-1:0] segment_selector;
 
+// Only send read/write enable bits to the channel selected in the 6th hex
+// 0x40000000: channel 0 is DPLL
+// 0x40100000: channel 1 is BRAM-based data logger
+// 0x40200000: channel 2 is to read data in the RAM for addr_packed
+// 0x40300000: channel 3 is "Housekeeping"
+// 0x40400000: channel 4 is AMS
+// 0x40500000: channel 5 is VCO Output Multiplexer
+// 0x40600000: channel 6 is VCO for DAC
+// 0x40700000: channel 7 is FREE
+
+assign segment_selector = (sys_addr - 32'h40000000) >> (4*(6-1));
+assign sys_cs = 8'h01 << segment_selector;
+
+//assign sys_cs = 8'h01 << sys_addr[22:20];
+ 
 assign sys_wen = sys_cs & {8{ps_sys_wen}};
 assign sys_ren = sys_cs & {8{ps_sys_ren}};
 
@@ -237,16 +261,6 @@ assign ps_sys_err   = |(sys_cs & sys_err);
 assign ps_sys_ack   = |(sys_cs & sys_ack);
 
 // unused system bus slave ports
-
-// channel 0 is DPLL
-// channel 1 is BRAM-based data logger
-// channel 2 is to read data in the RAM for addr_packed
-
-
-// channel 3 is "Housekeeping"
-// channel 4 is AMS
-// channel 5 is output multiplexer
-// channel 6 is VCO for DAC
 
 // assign sys_rdata[5*32+:32] = 32'h0; 
 // assign sys_err  [5       ] =  1'b0;
@@ -260,79 +274,50 @@ assign sys_rdata[7*32+:32] = 32'h0;
 assign sys_err  [7       ] =  1'b0;
 assign sys_ack  [7       ] =  1'b1;
 
+
 ////////////////////////////////////////////////////////////////////////////////
-// local signals
+// Clock Distribution and Synchronization
 ////////////////////////////////////////////////////////////////////////////////
+//
 
-// PLL signals
-wire                  adc_clk_in;
-wire                  pll_adc_clk;
-wire                  pll_dac_clk_1x;
-wire                  pll_dac_clk_2x;
-wire                  pll_dac_clk_2p;
-wire                  pll_clk_adc_2x;
-wire                  pll_pwm_clk;
-wire                  pll_locked;
+// ADC Clock and Reset Signals
+wire                adc_clk;
+wire                adc_clk_2x;
+wire                adc_clk_3x;
+reg                 adc_rstn;
 
-// fast serial signals
-wire                  ser_clk ;
+// DAC Clock and Reset Signals
+wire                  dac_clk_iqsel;
+wire                  dac_clk_iqclk;
+wire                  dac_clk_iqwrt;
+reg                   dac_rst;
 
-// PWM clock and reset
+// PLL Signals
+wire                pll_locked;
+
+// PWM Clock and Reset Signals
 wire                  pwm_clk ;
 reg                   pwm_rstn;
 
-// ADC signals
-wire                  adc_clk, adc_clk_2x;
-reg                   adc_rstn;
-reg          [14-1:0] adc_dat_a, adc_dat_b;
-wire  signed [14-1:0] adc_a    , adc_b    ;
+// Daisy Chain Clock signal
+wire clk_out_10;
 
-// DAC signals
-wire                  dac_clk_1x;
-wire                  dac_clk_2x;
-wire                  dac_clk_2p;
-reg                   dac_rst;
-reg          [14-1:0] dac_dat_a, dac_dat_b;
-wire         [14-1:0] dac_a    , dac_b    ;
-wire  signed [15-1:0] dac_a_sum, dac_b_sum;
-
-// ASG
-wire  signed [14-1:0] asg_a    , asg_b    ;
-
-// PID
-wire  signed [14-1:0] pid_a    , pid_b    ;
-
-// configuration
-wire                  digital_loop;
-
-////////////////////////////////////////////////////////////////////////////////
-// PLL (clock and reaset)
-////////////////////////////////////////////////////////////////////////////////
-
-// diferential clock input
-IBUFDS i_clk (.I (adc_clk_p_i), .IB (adc_clk_n_i), .O (adc_clk_in));  // differential clock input
-
-red_pitaya_pll pll (
-  // inputs
-  .clk         (adc_clk_in),  // clock
-  .rstn        (frstn[0]  ),  // reset - active low
-  // output clocks
-  .clk_adc     (pll_adc_clk   ),  // ADC clock
-  .clk_dac_1x  (pll_dac_clk_1x),  // DAC clock 125MHz
-  .clk_dac_2x  (pll_dac_clk_2x),  // DAC clock 250MHz
-  .clk_dac_2p  (pll_dac_clk_2p),  // DAC clock 250MHz -45DGR
-  .clk_adc_2x  (pll_clk_adc_2x),  // fast serial clock
-  .clk_pwm     (pll_pwm_clk   ),  // PWM clock
-  // status outputs
-  .pll_locked  (pll_locked)
+// ADC Data Clock PLL
+adc_data_clk_pll adc_data_clk_pll_inst (
+    // Inputs
+    .clk_in1_n(adc_clk_n_i),
+    .clk_in1_p(adc_clk_p_i),
+    .resetn(frstn[0]), // reset - active low
+    // Outputs
+    .clk_adc_1x(adc_clk),       // ADC clock 125 MHz
+    .clk_adc_2x(adc_clk_2x),    // ADC clock 250 MHz
+    .clk_adc_3x(adc_clk_3x),    // ADC clock 375 MHz
+    .clk_dac_iqsel(dac_clk_iqsel),    // DAC IQSEL clock 125 MHz
+    .clk_dac_iqclk(dac_clk_iqclk),    // DAC IQCLK clock 250 MHz -45 DGR (-.5 ns)
+    .clk_dac_iqwrt(dac_clk_iqwrt),    // DAC clock 250 MHz
+    .clk_out_10MHz(clk_out_10),    // Daisy chain clock 10 MHz
+    .locked(pll_locked)
 );
-
-BUFG bufg_adc_clk    (.O (adc_clk   ), .I (pll_adc_clk   ));
-BUFG bufg_dac_clk_1x (.O (dac_clk_1x), .I (pll_dac_clk_1x));
-BUFG bufg_dac_clk_2x (.O (dac_clk_2x), .I (pll_dac_clk_2x));
-BUFG bufg_dac_clk_2p (.O (dac_clk_2p), .I (pll_dac_clk_2p));
-BUFG bufg_ser_clk    (.O (adc_clk_2x), .I (pll_clk_adc_2x));
-//BUFG bufg_pwm_clk    (.O (pwm_clk   ), .I (pll_pwm_clk   ));
 assign pwm_clk = adc_clk_2x;
 
 // ADC reset (active low) 
@@ -340,80 +325,164 @@ always @(posedge adc_clk)
 adc_rstn <=  frstn[0] &  pll_locked;
 
 // DAC reset (active high)
-always @(posedge dac_clk_1x)
+always @(posedge dac_clk_iqsel)
 dac_rst  <= ~frstn[0] | ~pll_locked;
 
 // PWM reset (active low)
 always @(posedge pwm_clk)
 pwm_rstn <=  frstn[0] &  pll_locked;
 
-////////////////////////////////////////////////////////////////////////////////
-// ADC IO
-////////////////////////////////////////////////////////////////////////////////
 
-// generating ADC clock is disabled
-assign adc_clk_o = 2'b10;
+////////////////////////////////////////////////////////////////////////////////
+// ADC I/O
+////////////////////////////////////////////////////////////////////////////////
+//
+
+// ADC CDCS Output Register
+reg adc_cdcs_reg = 1'b1;    // ADC clock duty cycle stabilizer is enabled
+
+// ADC Data Input Buffer
+wire  [16-1: 2] adc_dat_a_i_buff;   // ADC CH1 buffer
+wire  [16-1: 2] adc_dat_b_i_buff;   // ADC CH2 buffer
+
+// ADC Data Input Register
+wire        [14-1:0] adc_dat_a, adc_dat_b;
+reg  signed [14-1:0] adc_a    , adc_b    ;
+
+// ADC Encoder clock
+//// generating ADC encoder clock is disabled
+//assign adc_clk_o = 2'b10;
 //ODDR i_adc_clk_p ( .Q(adc_clk_o[0]), .D1(1'b1), .D2(1'b0), .C(fclk[0]), .CE(1'b1), .R(1'b0), .S(1'b0));
 //ODDR i_adc_clk_n ( .Q(adc_clk_o[1]), .D1(1'b0), .D2(1'b1), .C(fclk[0]), .CE(1'b1), .R(1'b0), .S(1'b0));
 
-// ADC clock duty cycle stabilizer is enabled
-assign adc_cdcs_o = 1'b1 ;
+// ADC CDCS Output Buffer
+OBUF #(
+    .IOSTANDARD("LVCMOS18") // Specify the output I/O standard
+) OBUF_inst_adc_cdcs_o (
+  .O(adc_cdcs_o),   // Buffer output (connect directly to top-level port)
+  .I(adc_cdcs_reg)  // Buffer input
+);
 
-// IO block registers should be used here
-// lowest 2 bits reserved for 16bit ADC
+// ADC-A Data Input Buffer
+IBUF #(
+  .IBUF_LOW_PWR("FALSE"),  // Low power (TRUE) vs. performance (FALSE) setting for referenced I/O standards
+  .IOSTANDARD("LVCMOS18")  // Specify the input I/O standard
+) IBUF_inst_adc_dat_a_i[16-1:2] (
+  .O(adc_dat_a_i_buff),     // Buffer output
+  .I(adc_dat_a_i)      // Buffer input (connect directly to top-level port)
+);
+
+// ADC-B Data Input Buffer
+IBUF #(
+  .IBUF_LOW_PWR("FALSE"),  // Low power (TRUE) vs. performance (FALSE) setting for referenced I/O standards
+  .IOSTANDARD("LVCMOS18")  // Specify the input I/O standard
+) IBUF_inst_adc_dat_b_i[16-1:2] (
+  .O(adc_dat_b_i_buff),     // Buffer output
+  .I(adc_dat_b_i)      // Buffer input (connect directly to top-level port)
+);
+
+// ADC Data Input Register
+//// lowest 2 bits reserved for 16bit ADC (Current is only 14bit)
+assign adc_dat_a = adc_dat_a_i_buff[16-1:2];
+assign adc_dat_b = adc_dat_b_i_buff[16-1:2];
+//// transform offset binary representation into 2's complement (invert MSB)
 always @(posedge adc_clk)
 begin
-  adc_dat_a <= adc_dat_a_i[16-1:2];
-  adc_dat_b <= adc_dat_b_i[16-1:2];
+  adc_a <= {adc_dat_a[14-1], ~adc_dat_a[(14-1)-1:0]};
+  adc_b <= {adc_dat_b[14-1], ~adc_dat_b[(14-1)-1:0]};
 end
     
-// transform into 2's complement (negative slope)
-assign adc_a = digital_loop ? dac_a : {adc_dat_a[14-1], ~adc_dat_a[14-2:0]};
-assign adc_b = digital_loop ? dac_b : {adc_dat_b[14-1], ~adc_dat_b[14-2:0]};
 
 ////////////////////////////////////////////////////////////////////////////////
-// DAC IO
+// DAC I/O
 ////////////////////////////////////////////////////////////////////////////////
+//
 
-// // JD: Added a manual offset register for the dac outputs, at addresses 0x4050_0000 and 0x4050_0004:
-// // manual output registers which add to the dac output value:
-// reg signed [16-1:0] manual_dac_register_a, manual_dac_register_b;
+// DAC signals
+reg          [14-1:0] dac_dat_a, dac_dat_b;
+wire         [14-1:0] dac_a    , dac_b    ;
 
-// always @(posedge adc_clk)
-// begin
-//     if (sys_wen[5]) begin
-//         if (sys_addr[19:0] == 20'h0) manual_dac_register_a <= sys_wdata[ 16-1:0 ];
-//         if (sys_addr[19:0] == 20'h4) manual_dac_register_b <= sys_wdata[ 16-1:0 ];
-//     end
-// end
-
-// // Sumation of ASG and PID signal perform saturation before sending to DAC 
-// assign dac_a_sum = vco_cosine_out[16-1:1] + pid_a + manual_dac_register_a;
-// assign dac_b_sum = pid_b + manual_dac_register_b;
-
-// // saturation
-// assign dac_a = (^dac_a_sum[15-1:15-2]) ? {dac_a_sum[15-1], {13{~dac_a_sum[15-1]}}} : dac_a_sum[14-1:0];
-// assign dac_b = (^dac_b_sum[15-1:15-2]) ? {dac_b_sum[15-1], {13{~dac_b_sum[15-1]}}} : dac_b_sum[14-1:0];
-
-
-// output registers + signed to unsigned (also to negative slope)
-always @(posedge dac_clk_1x)
+// output registers + 2's complement to offset binary
+always @(posedge dac_clk_iqsel)
 begin
-  dac_dat_a <= {dac_a[14-1], ~dac_a[14-2:0]};
-  dac_dat_b <= {dac_b[14-1], ~dac_b[14-2:0]};
+  dac_dat_a <= {dac_a[14-1], ~dac_a[(14-1)-1:0]};
+  dac_dat_b <= {dac_b[14-1], ~dac_b[(14-1)-1:0]};
 end
 
 // DDR outputs
-ODDR oddr_dac_clk          (.Q(dac_clk_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_2p), .CE(1'b1), .R(1'b0   ), .S(1'b0));
-ODDR oddr_dac_wrt          (.Q(dac_wrt_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_2x), .CE(1'b1), .R(1'b0   ), .S(1'b0));
-ODDR oddr_dac_sel          (.Q(dac_sel_o), .D1(1'b1     ), .D2(1'b0     ), .C(dac_clk_1x), .CE(1'b1), .R(dac_rst), .S(1'b0));
-ODDR oddr_dac_rst          (.Q(dac_rst_o), .D1(dac_rst  ), .D2(dac_rst  ), .C(dac_clk_1x), .CE(1'b1), .R(1'b0   ), .S(1'b0));
-ODDR oddr_dac_dat [14-1:0] (.Q(dac_dat_o), .D1(dac_dat_b), .D2(dac_dat_a), .C(dac_clk_1x), .CE(1'b1), .R(dac_rst), .S(1'b0));
+//ODDR oddr_dac_clk          (.Q(dac_clk_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_iqclk), .CE(1'b1), .R(1'b0   ), .S(1'b0));
+//ODDR oddr_dac_wrt          (.Q(dac_wrt_o), .D1(1'b0     ), .D2(1'b1     ), .C(dac_clk_iqwrt), .CE(1'b1), .R(1'b0   ), .S(1'b0));
+//ODDR oddr_dac_sel          (.Q(dac_sel_o), .D1(1'b1     ), .D2(1'b0     ), .C(dac_clk_iqsel), .CE(1'b1), .R(dac_rst), .S(1'b0));
+//ODDR oddr_dac_rst          (.Q(dac_rst_o), .D1(dac_rst  ), .D2(dac_rst  ), .C(dac_clk_iqsel), .CE(1'b1), .R(1'b0   ), .S(1'b0));
+//ODDR oddr_dac_dat [14-1:0] (.Q(dac_dat_o), .D1(dac_dat_b), .D2(dac_dat_a), .C(dac_clk_iqsel), .CE(1'b1), .R(dac_rst), .S(1'b0));
+
+// DAC IQCLK DDR Output Register
+ODDR #(
+  .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
+) ODDR_inst_oddr_dac_clk (
+  .Q(dac_clk_o),   // 1-bit DDR output
+  .C(dac_clk_iqclk),   // IQCLK clock input, 250 MHz -45 DGR (-.5 ns)
+  .CE(1'b1), // Clock enabled
+  .D1(1'b0), // Clock passthrough input (positive edge)
+  .D2(1'b1), // Clock passthrough input (negative edge)
+  .R(1'b0)   // No reset
+);
+
+// DAC IQWRT DDR Output Register
+ODDR #(
+  .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
+) ODDR_inst_oddr_dac_wrt (
+  .Q(dac_wrt_o),   // 1-bit DDR output
+  .C(dac_clk_iqwrt),   // IQWRT clock input, 250 MHz
+  .CE(1'b1), // Clock enabled
+  .D1(1'b0), // Clock passthrough input (positive edge)
+  .D2(1'b1), // Clock passthrough input (negative edge)
+  .R(1'b0)   // No reset
+);
+
+// DAC IQSEL DDR Output Register
+ODDR #(
+  .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
+) ODDR_inst_oddr_dac_sel (
+  .Q(dac_sel_o),   // 1-bit DDR output
+  .C(dac_clk_iqsel),   // IQSEL clock input, 125 MHz
+  .CE(1'b1),    // Clock enabled
+  .D1(1'b1),    // Clock passthrough input (positive edge)
+  .D2(1'b0),    // Clock passthrough input (negative edge)
+  .R(dac_rst)   // DAC reset
+);
+
+// DAC Data DDR Output Registers
+ODDR #(
+  .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
+) ODDR_inst_oddr_dac_dat[14-1:0] (
+  .Q(dac_dat_o),        // 14-bit DDR output
+  .C(dac_clk_iqsel),    // IQSEL clock input, 125 MHz
+  .CE(1'b1),            // Clock enabled
+  .D1(dac_dat_b),       // 14-bit data input (positive edge)
+  .D2(dac_dat_a),       // 14-bit data input (negative edge)
+  .R(dac_rst)           // DAC reset
+);
+
+// DAC IQRESET DDR Output Register
+ODDR #(
+  .DDR_CLK_EDGE("SAME_EDGE") // D1,D2 available concurrently
+) ODDR_inst_oddr_dac_rst (
+  .Q(dac_rst_o),        // 1-bit DDR output
+  .C(dac_clk_iqsel),    // IQSEL clock input, 62.5 MHz
+  .CE(1'b1),            // Clock enabled
+  .D1(dac_rst),         // IQRESET passthrough (positive edge)
+  .D2(dac_rst),         // IQRESET passthrough (negative edge)
+  .R(1'b0)              // No reset
+);
 
 
+////////////////////////////////////////////////////////////////////////////////
+//  Digital-PLL module
+////////////////////////////////////////////////////////////////////////////////
+// 2 inputs, 2 outputs
+//
 
-//---------------------------------------------------------------------------------
-//  Digital-PLL module (2 inputs, 2 outputs)
 wire signed [15:0] ADCraw0, ADCraw1;
 wire signed [15:0] DACout0, DACout1;
 wire [16-1:0] LoggerData;
@@ -448,10 +517,12 @@ assign ADCraw1 = {adc_b, 2'b0};
 
 wire dpll_rst = 1'b0; // I don't know if we can use the RedPitaya's reset because I don't know if it is clock-synchronous or not. In any case, it does not matter because we have the sys_bus driven resets.
 
+// DPLL Wrapper
 dpll_wrapper dpll_wrapper_inst (
   
   .clk1                    (  adc_clk                    ), // global clock, designed for 100 MHz clock rate
-  .clk1_timesN             (  adc_clk_2x                 ), // this should be N times the clock, phase-locked to clk1, N matching what was input in the FIR compiler for fir_compiler_minimumphase_N_times_clk
+  .clk1_2x                 (  adc_clk_2x                 ), // this should be 2 times the clock, phase-locked to clk1, N matching what was input in the FIR compiler for fir_compiler_minimumphase_N_times_clk
+  .clk1_3x                 (  adc_clk_3x                 ),
   .rst                     (  dpll_rst                   ), // currently only use the resets driven by the system bus
 
   // analog data input/output interface
@@ -476,6 +547,7 @@ dpll_wrapper dpll_wrapper_inst (
   .sys_ack                 (  sys_ack[0]                 )   // acknowledge signal            -- sys_ack[0]
 );
 
+// 
 addr_packed addr_packed_inst (
   .clk                    ( adc_clk                   ),
   .rst                    ( adc_rstn                  ),
@@ -491,33 +563,6 @@ addr_packed addr_packed_inst (
 );
 
 
-// assign  = selected_output;
-
-// always @(posedge adc_clk)
-// begin
-//   if (sys_wen[0] || sys_ren[0]) begin
-//     if ((20'h00025 <= sys_addr) && (sys_addr <= 20'h00040)) begin
-//         dpll_output_selector <= 1;
-//     end
-//     else begin
-//         dpll_output_selector <= 0;
-//     end
-//     end
-// end
-
-// always @*
-// begin
-//     if (dpll_output_selector == 1) begin
-//         selected_output <= dpll_output;
-//     end
-//     else begin
-//         selected_output <= addr_packed_output;
-//     end
-// end
-
-// assign sys_rdata[ 0*32+31: 0*32] = dpll_output;
-// assign sys_ack[0] = addr_packed_ack; // || dpll_ack;
-
 always @(posedge adc_clk) begin
   if (adc_rstn == 1'b0) begin
     led_counter <= 26'h0;
@@ -529,35 +574,13 @@ end
 
 assign led_o = {fifo_empty, fifo_full, led_counter[25], 4'b0};
 
-// // ---------------------------------------------------------------------------------
-// // For testing the N-times clk FIR filter:
-// reg signed [16-1:0] fir_test_data;
 
-// N_times_clk_FIR_wrapper N_times_clk_FIR_wrapper_inst (
-//   // these two clocks need to be phase-locked to have a common edge (0 phase difference at the rising edges of clk_times_1)
-//   .clk_times_1    (  adc_clk        ),
-//   .clk_times_N    (  adc_clk_2x     ),
-  
-//   // these two signals are on the clk_times_1 clock domain
-//   .data_in        (  fir_test_data  ),
-//   .data_out       (  LoggerData     )
-
-//   );
-// assign LoggerData_clk_enable = 1'b1;
-
-// always @(posedge adc_clk)
-// begin
-//   if (LoggerIsWriting) begin
-//     fir_test_data <= 16'd1000;
-//   end
-//   else begin
-//     fir_test_data <= 16'd0;
-//   end
-// end
-
-//---------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////
+// BRAM Data Logger
+////////////////////////////////////////////////////////////////////////////////
 // BRAM-based data logger, replaces the Red Pitaya oscilloscope application, but has much simpler behavior:
 // The write port is directly controlled by the DPLL module, while the reads happen through the Zynq sys_bus
+//
 
 // // for testing independently of the DPLL module:
 // assign LoggerData = adc_a;
@@ -584,98 +607,10 @@ ram_data_logger ram_data_logger_i (
   );
 
 
-//---------------------------------------------------------------------------------
-// //  Internal VCO channel a
-// wire signed [16-1:0] vco0_cosine_out;
-// wire signed [16-1:0] vco0_sine_out;
-// reg  signed [48-1:0] vco0_frequency;
-
-// always @(posedge adc_clk)
-// begin
-//     // gain was determined to mimick ~3e8 Hz/V of VCO gain, using:
-//     // log2(3e8/(125e6/2^48 * 2^15/1))
-//     // offset is equal to dec2bin(20e6/100e6 * 2^48, 48)
-//     //vco_frequency <= ($signed(DACout0)<<<34) + $signed(48'b001100110011001100110011001100110011001100110011);
-    
-//     // This alternative gain setting is set to be able to address the full 0-Nyquist frequency range with the 16-bits control signal out of the DPLL block.
-//     // offset is equal to dec2bin(20e6/100e6 * 2^48, 48)
-//     vco0_frequency <= ($signed(DACout0)<<<(48-16-1)) + $signed(48'b0100000000000000000000000000000_00000000000000000);
-    
-//     // this value is equal to dec2bin(31.25e6/125e6 * 2^48, 48) (MATLAB)
-//     //vco_frequency <= $signed(48'b000101101000011100101011000000100000110001001001);
-// end
-
-// internal_vco internal_vco_0 (
-
-//  .clk             (  adc_clk                    ),
-
-//  // frequency in counts: analog frequency is equal to: frequency/2^48*clock frequency (currently 125 MHz)
-//  .frequency       (  vco0_frequency              ),
-
-//   // System bus, address starts at 0x4X20_0000
-//  .sys_addr        (  sys_addr                   ),  // address
-//  .sys_wdata       (  sys_wdata                  ),  // write data
-//  .sys_sel         (  sys_sel                    ),  // write byte select
-//  .sys_wen         (  sys_wen[2]                 ),  // write enable
-//  .sys_ren         (  sys_ren[2]                 ),  // read enable
-//  .sys_rdata       (  sys_rdata[ 2*32+31: 2*32]  ),  // read data
-//  .sys_err         (  sys_err[2]                 ),  // error indicator
-//  .sys_ack         (  sys_ack[2]                 ),  // acknowledge signal
-
-
-//  .cosine_out      (  vco0_cosine_out             ),
-//  .sine_out        (  vco0_sine_out               )
-
-//  );
-// //assign dac_b = vco0_cosine_out[16-1:2];
-
-// //---------------------------------------------------------------------------------
-// //  Internal VCO channel b
-// wire signed [16-1:0] vco1_cosine_out;
-// wire signed [16-1:0] vco1_sine_out;
-// reg  signed [48-1:0] vco1_frequency;
-
-// always @(posedge adc_clk)
-// begin
-//     // gain was determined to mimick ~3e8 Hz/V of VCO gain, using:
-//     // log2(3e8/(125e6/2^48 * 2^15/1))
-//     // offset is equal to dec2bin(20e6/100e6 * 2^48, 48)
-//     //vco_frequency <= ($signed(DACout0)<<<34) + $signed(48'b001100110011001100110011001100110011001100110011);
-    
-//     // This alternative gain setting is set to be able to address the full 0-Nyquist frequency range with the 16-bits control signal out of the DPLL block.
-//     // offset is equal to dec2bin(31.25e6/125e6 * 2^48, 48)
-//     vco1_frequency <= ($signed(DACout1)<<<(48-16-1)) + $signed(48'b0100000000000000000000000000000_00000000000000000);
-    
-//     // this value is equal to dec2bin(31.25e6/125e6 * 2^48, 48) (MATLAB)
-//     //vco_frequency <= $signed(48'b000101101000011100101011000000100000110001001001);
-// end
-
-// internal_vco internal_vco_1 (
-
-//  .clk             (  adc_clk                    ),
-
-//  // frequency in counts: analog frequency is equal to: frequency/2^48*clock frequency (currently 125 MHz)
-//  .frequency       (  vco1_frequency              ),
-
-//   // System bus, address starts at 0x4X20_0000
-//  .sys_addr        (  sys_addr                   ),  // address
-//  .sys_wdata       (  sys_wdata                  ),  // write data
-//  .sys_sel         (  sys_sel                    ),  // write byte select
-//  .sys_wen         (  sys_wen[4]                 ),  // write enable
-//  .sys_ren         (  sys_ren[4]                 ),  // read enable
-//  .sys_rdata       (  sys_rdata[ 4*32+31: 4*32]  ),  // read data
-//  .sys_err         (  sys_err[4]                 ),  // error indicator
-//  .sys_ack         (  sys_ack[4]                 ),  // acknowledge signal
-
-
-//  .cosine_out      (  vco1_cosine_out             ),
-//  .sine_out        (  vco1_sine_out               )
-
-//  );
-// //assign dac_b = vco0_cosine_out[16-1:2];
-
-//---------------------------------------------------------------------------------
-//  House Keeping
+////////////////////////////////////////////////////////////////////////////////
+//  House Keeping (HK)
+////////////////////////////////////////////////////////////////////////////////
+//
 
 wire  [  8-1: 0] exp_p_in , exp_n_in ;
 wire  [  8-1: 0] exp_p_out, exp_n_out;
@@ -733,9 +668,12 @@ assign exp_p_dir = {8'b11111111};
 IOBUF i_iobufp [8-1:0] (.O(exp_p_in), .IO(exp_p_io), .I(exp_p_out_hk), .T(~exp_p_dir) );
 IOBUF i_iobufn [8-1:0] (.O(exp_n_in), .IO(exp_n_io), .I(exp_n_out_hk), .T(~exp_n_dir) );
 
-//---------------------------------------------------------------------------------
+
+////////////////////////////////////////////////////////////////////////////////
 // VCO and output mux
+////////////////////////////////////////////////////////////////////////////////
 // Channel 5
+//
 
 wire signed [14-1 : 0] to_DAC0;
 wire signed [14-1 : 0] to_DAC1;
@@ -769,46 +707,15 @@ assign dac_a = to_DAC0;
 assign dac_b = to_DAC1;
 
 
-// ---------------------------------------------------------------------------------
-// // output mux (select between different configurations)
-// // Channel 5
-
-// wire signed [14-1:0] signal_mux0;
-// wire signed [14-1:0] signal_mux1;
-
-// output_multiplexer muxDAC (
-//   // system signals
-//   .clk             (  adc_clk                    ),  // clock
-// //  .rstn_i          (  adc_rstn                   ),  // reset - active low
-
-//    // System bus
-//   .sys_addr        (  sys_addr                   ),  // address
-//   .sys_wdata       (  sys_wdata                  ),  // write data
-//   .sys_sel         (  sys_sel                    ),  // write byte select
-//   .sys_wen         (  sys_wen[5]                 ),  // write enable
-//   .sys_ren         (  sys_ren[5]                 ),  // read enable
-//   .sys_rdata       (  sys_rdata[ 5*32+31: 5*32]  ),  // read data
-//   .sys_err         (  sys_err[5]                 ),  // error indicator
-//   .sys_ack         (  sys_ack[5]                 ),  // acknowledge signal
-//   .in0_0_mux       (  DACout0[16-1:2]            ),  // 
-//   .in1_0_mux       (  vco0_cosine_out[16-1:2]     ),  //
-//   .out_0_mux       (  signal_mux0                ),
-//   .in0_1_mux       (  DACout1[16-1:2]            ),  // 
-//   .in1_1_mux       (  vco1_cosine_out[16-1:2]     ),  //
-//   .out_1_mux       (  signal_mux1                )
-// );
-
-// assign dac_a = signal_mux0;
-// assign dac_b = signal_mux1;
-
-
-// ---------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////
 //  Oscilloscope application
+////////////////////////////////////////////////////////////////////////////////
 // JDD: I kept this here just because it seems like we need to keep the axi0 and axi1 modules,
 // otherwise the Zynq PS hangs up everytime we try to access the FPGA's address space.
 // Eventually I should figure out how to properly remove them without this lock-up problem.
 // It could simply be related to the fact that axi0_clk and axi1_clk are in fact connected to adc_clk inside this module,
 // but it could also be that we need to 'ack' transactions in some manner which is implemented by the axi-fifos inside...
+//
 
 wire trig_asg_out ;
 
@@ -843,54 +750,11 @@ red_pitaya_scope i_scope (
 );
 
 
-////---------------------------------------------------------------------------------
-////  DAC arbitrary signal generator
-
-//red_pitaya_asg i_asg (
-//   // DAC
-//  .dac_a_o         (  asg_a                      ),  // CH 1
-//  .dac_b_o         (  asg_b                      ),  // CH 2
-//  .dac_clk_i       (  adc_clk                    ),  // clock
-//  .dac_rstn_i      (  adc_rstn                   ),  // reset - active low
-//  .trig_a_i        (  exp_p_in[0]                ),
-//  .trig_b_i        (  exp_p_in[0]                ),
-//  .trig_out_o      (  trig_asg_out               ),
-//  // System bus
-//  .sys_addr        (  sys_addr                   ),  // address
-//  .sys_wdata       (  sys_wdata                  ),  // write data
-//  .sys_sel         (  sys_sel                    ),  // write byte select
-//  .sys_wen         (  sys_wen[2]                 ),  // write enable
-//  .sys_ren         (  sys_ren[2]                 ),  // read enable
-//  .sys_rdata       (  sys_rdata[ 2*32+31: 2*32]  ),  // read data
-//  .sys_err         (  sys_err[2]                 ),  // error indicator
-//  .sys_ack         (  sys_ack[2]                 )   // acknowledge signal
-//);
-
-////---------------------------------------------------------------------------------
-////  MIMO PID controller
-
-//red_pitaya_pid i_pid (
-//   // signals
-//  .clk_i           (  adc_clk                    ),  // clock
-//  .rstn_i          (  adc_rstn                   ),  // reset - active low
-//  .dat_a_i         (  adc_a                      ),  // in 1
-//  .dat_b_i         (  adc_b                      ),  // in 2
-//  .dat_a_o         (  pid_a                      ),  // out 1
-//  .dat_b_o         (  pid_b                      ),  // out 2
-//  // System bus
-//  .sys_addr        (  sys_addr                   ),  // address
-//  .sys_wdata       (  sys_wdata                  ),  // write data
-//  .sys_sel         (  sys_sel                    ),  // write byte select
-//  .sys_wen         (  sys_wen[3]                 ),  // write enable
-//  .sys_ren         (  sys_ren[3]                 ),  // read enable
-//  .sys_rdata       (  sys_rdata[ 3*32+31: 3*32]  ),  // read data
-//  .sys_err         (  sys_err[3]                 ),  // error indicator
-//  .sys_ack         (  sys_ack[3]                 )   // acknowledge signal
-//);
-
-//---------------------------------------------------------------------------------
-//  Analog mixed signals
+////////////////////////////////////////////////////////////////////////////////
+//  Analog mixed signals (AMS)
+////////////////////////////////////////////////////////////////////////////////
 //  XADC and slow PWM DAC control
+//
 
 wire  [ 24-1: 0] pwm_cfg_a;
 wire  [ 24-1: 0] pwm_cfg_b;
@@ -928,13 +792,14 @@ red_pitaya_pwm pwm [4-1:0] (
  .pwm_s ()
 );
 
-//---------------------------------------------------------------------------------
+
+////////////////////////////////////////////////////////////////////////////////
 //  Daisy chain
+////////////////////////////////////////////////////////////////////////////////
 //  simple communication module
+//
 
 reg [3-1:0] daisy_counter;
-
-wire clk_out_10;
 
 always @(posedge adc_clk) begin
   if (adc_rstn == 1'b0) begin
@@ -945,18 +810,8 @@ always @(posedge adc_clk) begin
   end
 end
 
-clk_10MHz_sync 
-(// Clock in ports
-  .clk_in1    ( adc_clk   ),
-  // Clock out ports
-  .clk_out1   (clk_out_10 ),
-  // Status and control signals
-  .locked     (           )
- );
-
-
 assign daisy_p_o = {clk_out_10, 1'bz};  //Important : if you want to use only one of the signals (p or n), terminate the other one with a 50 Ohm. To do so
 assign daisy_n_o = {~clk_out_10, 1'bz};   // we built a SATA connector with 2 SMA connector at the end (one for the "p" and one for the "n" signal).
 
-endmodule
 
+endmodule

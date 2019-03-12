@@ -28,32 +28,32 @@ entity quantizer is
     );
     port (
         clk : in  std_logic;
-        di  : in  std_logic_vector(DI_WIDTH-1 downto 0);
-        do  : out std_logic_vector(DO_WIDTH-1 downto 0)
+        di  : in  signed(DI_WIDTH-1 downto 0);
+        do  : out signed(DO_WIDTH-1 downto 0)
     );
 end entity;
 
 architecture behavioral of quantizer is
 
-    signal   di_ireg               : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
+    signal   di_ireg               : signed(DI_WIDTH-1 downto 0) := (others => '0');
 
 	signal   shift_register        : std_logic_vector(10-1 downto 0) := (others => '1');
 	signal   shift_register_input  : std_logic := '0';
 	signal   shift_register_output : std_logic := '0';
     signal   prbs_out              : std_logic := '0';
     
-    constant HALF_STEP_UP          : std_logic_vector(DI_WIDTH-1 downto 0) := std_logic_vector(to_signed(+2**(DI_WIDTH-DO_WIDTH-1), DI_WIDTH));
-    constant HALF_STEP_DOWN        : std_logic_vector(DI_WIDTH-1 downto 0) := std_logic_vector(to_signed(-2**(DI_WIDTH-DO_WIDTH-1), DI_WIDTH));
-    signal   noise                 : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
+    constant HALF_STEP_UP          : signed(DI_WIDTH-1 downto 0) := to_signed(+2**(DI_WIDTH-DO_WIDTH-1), DI_WIDTH);
+    constant HALF_STEP_DOWN        : signed(DI_WIDTH-1 downto 0) := to_signed(-2**(DI_WIDTH-DO_WIDTH-1), DI_WIDTH);
+    signal   noise                 : signed(DI_WIDTH-1 downto 0) := (others => '0');
     
-    signal feedback : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
-    signal qerr     : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
-    signal qi       : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
-    signal qi_frac  : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
-    signal qo       : std_logic_vector(DI_WIDTH-1 downto 0) := (others => '0');
-    signal qi_quant : std_logic_vector(DO_WIDTH-1 downto 0) := (others => '0');
+    signal feedback : signed(DI_WIDTH-1 downto 0) := (others => '0');
+    signal qerr     : signed(DI_WIDTH-1 downto 0) := (others => '0');
+    signal qi       : signed(DI_WIDTH-1 downto 0) := (others => '0');
+    signal qi_frac  : signed(DI_WIDTH-1 downto 0) := (others => '0');
+    signal qo       : signed(DI_WIDTH-1 downto 0) := (others => '0');
+    signal qi_quant : signed(DO_WIDTH-1 downto 0) := (others => '0');
     
-    signal do_oreg  : std_logic_vector(DO_WIDTH-1 downto 0) := (others => '0');
+    signal do_oreg  : signed(DO_WIDTH-1 downto 0) := (others => '0');
 begin
     ----------------------------------------------------------------------------------
     -- Input Registers
@@ -100,13 +100,13 @@ begin
 	quant : process(clk)
 	begin
 		if rising_edge(clk) then
-            feedback <= std_logic_vector(signed(feedback) + signed(qerr));
+            feedback <= signed(feedback) + signed(qerr);
 		end if;
 	end process;
-    qi <= std_logic_vector(signed(di_ireg) + signed(noise) + signed(feedback));
-    qi_frac <= std_logic_vector(resize(signed(qi(DI_WIDTH-DO_WIDTH-1 downto 0)), DI_WIDTH));
-    qo <= std_logic_vector(signed(qi) - signed(qi_frac));
-    qerr <= std_logic_vector(signed(di_ireg) - signed(qo));
+    qi <= signed(di_ireg) + signed(noise) + signed(feedback);
+    qi_frac <= resize(signed(qi(DI_WIDTH-DO_WIDTH-1 downto 0)), DI_WIDTH);
+    qo <= signed(qi) - signed(qi_frac);
+    qerr <= signed(di_ireg) - signed(qo);
     qi_quant <= qo(DI_WIDTH-1 downto DI_WIDTH-DO_WIDTH);
     
     ----------------------------------------------------------------------------------

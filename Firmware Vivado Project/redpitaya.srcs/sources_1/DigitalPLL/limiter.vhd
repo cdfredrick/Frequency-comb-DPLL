@@ -29,10 +29,10 @@ entity limiter is
 	); 
     port (
 		clk    : in  std_logic;                               -- clock
-        di     : in  std_logic_vector(DATA_WIDTH-1 downto 0); -- input data (signed)
-        di_min : in  std_logic_vector(DATA_WIDTH-1 downto 0); -- input data minimum (signed)
-        di_max : in  std_logic_vector(DATA_WIDTH-1 downto 0); -- input data maximum (signed)
-        do     : out std_logic_vector(DATA_WIDTH-1 downto 0)  -- outut data (signed)
+        di     : in  signed(DATA_WIDTH-1 downto 0); -- input data (signed)
+        di_min : in  signed(DATA_WIDTH-1 downto 0); -- input data minimum (signed)
+        di_max : in  signed(DATA_WIDTH-1 downto 0); -- input data maximum (signed)
+        do     : out signed(DATA_WIDTH-1 downto 0)  -- outut data (signed)
 	);
 end entity;
 
@@ -48,25 +48,25 @@ architecture behavioral of limiter is
     signal flag_vector : std_logic_vector(1 downto 0) := (others => '0');
     
     -- Input registers
-    signal regi_di     : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal regi_di_min : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal regi_di_max : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal regi_di     : signed(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal regi_di_min : signed(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal regi_di_max : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     
     -- MSB extended input data
-    signal ext_di      : std_logic_vector(DATA_WIDTH+1-1 downto 0) := (others => '0');
-    signal ext_di_min  : std_logic_vector(DATA_WIDTH+1-1 downto 0) := (others => '0');
-    signal ext_di_max  : std_logic_vector(DATA_WIDTH+1-1 downto 0) := (others => '0');
+    signal ext_di      : signed(DATA_WIDTH+1-1 downto 0) := (others => '0');
+    signal ext_di_min  : signed(DATA_WIDTH+1-1 downto 0) := (others => '0');
+    signal ext_di_max  : signed(DATA_WIDTH+1-1 downto 0) := (others => '0');
     
     -- Delayed data
-    signal dly_di      : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal dly_di_min  : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal dly_di_max  : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal dly_di      : signed(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal dly_di_min  : signed(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal dly_di_max  : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     
     -- Limited data
-    signal ltd_di      : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal ltd_di      : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     
     -- Output registers
-    signal rego_do     : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal rego_do     : signed(DATA_WIDTH-1 downto 0) := (others => '0');
 begin
 
     -- Input registers to ease timing
