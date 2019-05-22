@@ -83,7 +83,7 @@ architecture Behavioral of DDC_wideband_filters is
          clk : IN STD_LOGIC;
          a : IN signed(16-1 DOWNTO 0);
          b : IN signed(16-1 DOWNTO 0);
-         p : OUT signed(32-1 DOWNTO 0)
+         p : OUT signed(16-1 DOWNTO 0)
       );
     END COMPONENT;
     
@@ -163,7 +163,13 @@ architecture Behavioral of DDC_wideband_filters is
 
 begin
 
--- Compute cos() and sin(), or more precisely, round((2^15-1)*cos()) and round((2^15-1)*sin())
+    -- Direct Digital Synthesis (DDS) of the Local Oscillator (LO):
+    ------------------------------------------------------------------------------------------------
+    -- Compute cos() and sin(), or more precisely, round((2^15-1)*cos()) and round((2^15-1)*sin())
+    --
+    -- 9 clock cycles of delay for the reference frequency input
+    --
+    
     LO_DDS_inst : LO_DDS
     port map (
     
@@ -194,7 +200,16 @@ begin
     ref_cosine_out <= DDS_cosine;
     ref_sine_out   <= DDS_sine;
     
-    -- First-order, high-pass, IIR filter, about 7 kHz of cutoff frequency on the input data:
+    
+    -- Digital Down Conversion (DDC):
+    ------------------------------------------------------------------------------------------------
+    -- High pass filter the adc input, multiply by the IQ signals from the LO,
+    --  and low pass filter the result.
+    --
+    
+    -- High Pass Filter:
+    --------------------
+    -- First-order, high-pass, IIR filter, about ~10 kHz of cutoff frequency on the input data:
     first_order_IIR_highpass_filter_inst: entity work.first_order_IIR_highpass_filter 
     PORT MAP (
         clk      => clk,
@@ -219,15 +234,17 @@ begin
 			DDS_sine_reg <= DDS_sine;
 		end if;
 	end process;
-            
--- Multiply with input signal and truncate
-    --Note that these multipliers truncate the output to cancel the 2^15 gain from the amplitude of the LO cos and sin
+    
+    -- IQ Down Mixing:
+    ------------------
+    -- Multiply the LO with input signal and truncate.
+    -- Note that these multipliers cancel the 2^15 gain from the amplitude of the LO cos and sin and round the output. 
     input_multiplier_I : input_multiplier
     PORT MAP (
         clk => clk,
         a   => data_input_to_mult_reg,
         b   => DDS_cosine_reg,
-        p   => input_times_cos_wide
+        p   => input_times_cos
     );
 
     input_multiplier_Q : input_multiplier
@@ -235,23 +252,11 @@ begin
         clk => clk,
         a   => data_input_to_mult_reg,
         b   => DDS_sine_reg,
-        p   => input_times_sin_wide
+        p   => input_times_sin
     );
 
-    -- Cancel the multiplier gain and round the multiplication product.
-    process (clk)
-    begin
-        if rising_edge(clk) then
-            input_times_cos <= resize(shift_right(
-                                      input_times_cos_wide + to_signed(2**(BIT_SHIFT_AFTER_MULT-1), input_times_cos_wide'length)
-                                      , BIT_SHIFT_AFTER_MULT), input_times_cos'length);
-
-            input_times_sin <= resize(shift_right(
-                                      input_times_sin_wide + to_signed(2**(BIT_SHIFT_AFTER_MULT-1), input_times_cos_wide'length)
-                                      , BIT_SHIFT_AFTER_MULT), input_times_cos'length);
-        end if;
-    end process;
-            
+    -- Low Pass Filter:
+    -------------------
     -- Low-pass filter the result of the multiplication to yield I and Q signals
     -- These filters have a DC gain of 1.
     ddc_frontend_lowpass_filter_inst_I: entity work.ddc_frontend_lowpass_filter
@@ -281,11 +286,14 @@ begin
     );
 
     
-    -- For debugging of the CORDIC: Send the LO directly to the CORDIC
---    I_filtered <= DDS_cosine(15) & DDS_cosine(15) & DDS_cosine(15 downto 0+2);
---    Q_filtered <= DDS_sine(15) & DDS_sine(15) & DDS_sine(15 downto 0+2);
-
--- Compute the angle and the abs() of the IQ signal:
+    -- Phase Detection:
+    ------------------------------------------------------------------------------------------------
+    -- Compute the phase angle of the IQ signals with the CORDIC algorithm.
+    --
+    
+    -- CORDIC Phase:
+    ----------------
+    -- Compute the angle and the abs() of the IQ signal
     CORDIC_inst : angle_CORDIC
     PORT MAP (
         aclk => clk,
@@ -297,18 +305,13 @@ begin
     s_axis_cartesian_tdata <= std_logic_vector(Q_filtered & I_filtered);
     wrapped_phase_cordic    <= signed(cordic_m_axis_dout_tdata(27 downto 16));
     amplitude               <= signed(cordic_m_axis_dout_tdata(11 downto 0));
-      
-    -- The CORDIC always outputs two useless bits in the phase vector (see datasheet)
-    with angleSelect select
-    wrapped_phase_internal <= wrapped_phase_cordic(wrapped_phase_internal'range) when b"0000",
-                              Q_quantized                                        when b"0001",
-                              Q_limited                                          when b"0010",
-                              I_quantized                                        when b"0011",
-                              I_limited                                          when b"0100",
-                              (others => '0')                                    when others;
-  
-  
-  
+    
+    --    -- For debugging of the CORDIC: Send the LO directly to the CORDIC
+--    I_filtered <= DDS_cosine(15) & DDS_cosine(15) & DDS_cosine(15 downto 0+2);
+--    Q_filtered <= DDS_sine(15) & DDS_sine(15) & DDS_sine(15 downto 0+2);
+    
+    -- Other Algorthims:
+    --------------------
     quadrature_quantizer : entity work.quantizer
     generic map (
         DI_WIDTH => Q_filtered'length,
@@ -353,9 +356,23 @@ begin
         do     => I_limited_wide
     );
     I_limited <= I_limited_wide(WRAPPED_PHASE_WIDTH-1 downto 0);
-  
-  
--- Differentiate the phase to yield the instantenous frequency (modulo 2*pi to remove phase discontinuities)
+    
+    
+    -- The CORDIC always outputs two useless bits in the phase vector (see datasheet)
+    with angleSelect select
+    wrapped_phase_internal <= wrapped_phase_cordic(wrapped_phase_internal'range) when b"0000",
+                              Q_quantized                                        when b"0001",
+                              Q_limited                                          when b"0010",
+                              I_quantized                                        when b"0011",
+                              I_limited                                          when b"0100",
+                              (others => '0')                                    when others;
+
+
+    -- Phase Difference (Instantaneous Frequency) Error Signal:
+    ------------------------------------------------------------------------------------------------
+    -- Differentiate the phase to yield the instantenous frequency.
+    -- The numeric representation automatically accounts for modulo 2*pi
+    --  phase discontinuities.
     process (clk)
     begin
         if rising_edge(clk) then
