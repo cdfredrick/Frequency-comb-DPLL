@@ -32,6 +32,11 @@ class Loop_filters_module(object):
         self.coef_df_addr = self.bus_base_addr + self.dev.BUS_OFFSET_COEF_DF
         # Open Loop Gain Register Address
         self.gain_ol_addr = self.bus_base_addr + self.dev.BUS_OFFSET_GAIN_OL
+        # Loop Sign Register Address
+        self.lf_sign_addr = self.bus_base_addr + self.dev.BUS_OFFSET_LF_SIGN
+        # Manual Offset Register Address
+        self.manual_offset_addr_lsbs = self.bus_base_addr + self.dev.BUS_OFFSET_MAN_OFFSET_LSBs
+        self.manual_offset_addr_msbs = self.bus_base_addr + self.dev.BUS_OFFSET_MAN_OFFSET_MSBs
 
         self.N_DIVIDE_P = self.dev.N_BITS_DIVIDE_P[self.chan]
         self.N_DIVIDE_I = self.dev.N_BITS_DIVIDE_I[self.chan]
@@ -129,12 +134,46 @@ class Loop_filters_module(object):
     ###########################################################################
     #
 
+    def set_lf_sign(self, sign):
+        self.dev.write_Zynq_register_int16(
+            self.dev.dpll_write_address(self.lf_sign_addr),
+            int(np.signbit(sign)))
+
+    def get_lf_sign(self):
+        sign = self.dev.read_Zynq_register_int16(
+            self.dev.dpll_read_address(self.lf_sign_addr))
+        return sign
+
+    def set_manual_offset(self, offset_int):
+        if self.chan == 2:
+            # Channel 2 has a range of 48 bits
+            self.dev.write_Zynq_register_int64(
+                self.dev.dpll_write_address(self.manual_offset_addr_lsbs),
+                self.dev.dpll_write_address(self.manual_offset_addr_msbs),
+                offset_int)
+        else:
+            # Channels 0 and 1 have a range of 16 bits
+            self.dev.write_Zynq_register_int16(
+                self.dev.dpll_write_address(self.manual_offset_addr_lsbs),
+                offset_int)
+
+    def get_manual_offset(self):
+        ''' This function only returns the most recent value written with the
+        `set_manual_offset` method. This does not include adjustments made to this
+        value by the PLL's integrator term.
+        '''
+        if self.chan == 2:
+            # Channel 2 has a range of 48 bits
+            offset_int = self.dev.read_Zynq_register_int64(
+                self.dev.dpll_read_address(self.manual_offset_addr_lsbs),
+                self.dev.dpll_read_address(self.manual_offset_addr_msbs))
+        else:
+            # Channels 0 and 1 have a range of 16 bits
+            offset_int = self.dev.read_Zynq_register_int16(
+                self.dev.dpll_read_address(self.manual_offset_addr_lsbs))
+        return offset_int
+
     def set_pll_settings(self, gain_p, gain_i, gain_ii, gain_d, coef_df, bLock, gain_ol):
-        # Register format is:
-        # gain_p  (32 bits signed, actual gain is gain_p/ 2**N_DIVIDE_P)
-        # gain_i  (32 bits signed, actual gain is gain_i/ 2**N_DIVIDE_I)
-        # gain_ii (32 bits signed, actual gain is gain_ii/2**N_DIVIDE_II)
-        # settings register: 1 bit: bLock
         bDebugOutput = True
 
         gain_p_int = int(round(gain_p*2.**self.N_DIVIDE_P))

@@ -30,6 +30,7 @@ entity IIR_LPF_14to32 is
     );
     port (
         clk      : in  std_logic;
+        sclr     : in  std_logic;
         coef     : in  signed(N_COEF-1 downto 0);
         data_in  : in  signed(N_DATA-1 downto 0);
         data_out : out signed((N_DATA+N_COEF)-1 downto 0)
@@ -43,6 +44,7 @@ architecture behavioral of IIR_LPF_14to32 is
 	component IIR_LPF_14x18_mult
 	port (
 		clk  : in std_logic;
+		sclr : IN std_logic;
 		a    : in signed(N_DATA-1 downto 0);
 		b    : in signed(N_COEF-1 downto 0);
 		p    : out signed((N_DATA+N_COEF)-1 downto 0));
@@ -78,6 +80,7 @@ begin
     IIR_LPF_mult : IIR_LPF_14x18_mult
 	port map (
 		clk               => clk,
+		sclr              => sclr,
 		a                 => delta,
 		b                 => coef,
 		p                 => iir_lpf_mult_out
@@ -90,7 +93,12 @@ begin
     process (clk) is
     begin
         if rising_edge(clk) then
-            data_out_32 <= data_out_32 + iir_lpf_mult_out;
+            if sclr = '1' then
+				-- reset state:
+				data_out_32 <= (others => '0');
+			else
+                data_out_32 <= data_out_32 + iir_lpf_mult_out;
+               end if;
         end if;
     end process;
     data_out_14 <= resize(shift_right(data_out_32, 18), data_out_14'length);

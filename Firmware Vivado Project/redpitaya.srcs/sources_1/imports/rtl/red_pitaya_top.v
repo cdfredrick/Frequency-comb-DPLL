@@ -512,8 +512,8 @@ reg [26-1:0] led_counter;
 
 assign ADCraw0 = {adc_a, 2'b0};
 assign ADCraw1 = {adc_b, 2'b0};
-// assign dac_a = DACout0[16-1:2];   // converts 16 bits DACout to 14 bits for dac_a
-// assign dac_b = DACout1[16-1:2];   // converts 16 bits DACout to 14 bits for dac_b
+assign dac_a = DACout0[16-1:2];   // converts 16 bits DACout to 14 bits for dac_a
+assign dac_b = DACout1[16-1:2];   // converts 16 bits DACout to 14 bits for dac_b
 
 wire dpll_rst = 1'b0; // I don't know if we can use the RedPitaya's reset because I don't know if it is clock-synchronous or not. In any case, it does not matter because we have the sys_bus driven resets.
 
@@ -675,36 +675,36 @@ IOBUF i_iobufn [8-1:0] (.O(exp_n_in), .IO(exp_n_io), .I(exp_n_out_hk), .T(~exp_n
 // Channel 5
 //
 
-wire signed [14-1 : 0] to_DAC0;
-wire signed [14-1 : 0] to_DAC1;
+//wire signed [14-1 : 0] to_DAC0;
+//wire signed [14-1 : 0] to_DAC1;
 
-mux_internal_vco mux_vco (
-  .clk            ( adc_clk                   ), // clock
-  .DACin0         ( DACout0                   ), // output of the DPLL channel a
-  .DACin1         ( DACout1                   ), // output of the DPLL channel b
-  // internal configuration bus
-  .sys_addr       ( sys_addr                  ), // address
-  .sys_wdata      ( sys_wdata                 ), // write data
-  .sys_sel        ( sys_sel                   ), // write byte select
-  // communication bus for the vco
-  .sys_wen_vco    (sys_wen[6]                 ), // write enable for the vco
-  .sys_ren_vco    (sys_ren[6]                 ), // read enable for the vco
-  .sys_rdata_vco  (sys_rdata[ 6*32+31: 6*32]  ), // read data for the vco
-  .sys_err_vco    (sys_err[6]                 ), // error indicator for the vco
-  .sys_ack_vco    (sys_ack[6]                 ), // acknowledge signal for the vco
-  // communication bus for the mux
-  .sys_wen_mux    (sys_wen[5]                 ), // write enable for the mux
-  .sys_ren_mux    (sys_ren[5]                 ), // read enable for the mux
-  .sys_rdata_mux  (sys_rdata[ 5*32+31: 5*32]  ), // read data for the mux
-  .sys_err_mux    (sys_err[5]                 ), // error indicator for the mux
-  .sys_ack_mux    (sys_ack[5]                 ), // acknowledge signal for the mux
-  // output
-  .DACa_out       ( to_DAC0                  ), // output to the dac (from vco or directly from dpll)
-  .DACb_out       ( to_DAC1                  )  // output to the dac (from vco or directly from dpll)
-  );
+//mux_internal_vco mux_vco (
+//  .clk            ( adc_clk                   ), // clock
+//  .DACin0         ( DACout0                   ), // output of the DPLL channel a
+//  .DACin1         ( DACout1                   ), // output of the DPLL channel b
+//  // internal configuration bus
+//  .sys_addr       ( sys_addr                  ), // address
+//  .sys_wdata      ( sys_wdata                 ), // write data
+//  .sys_sel        ( sys_sel                   ), // write byte select
+//  // communication bus for the vco
+//  .sys_wen_vco    (sys_wen[6]                 ), // write enable for the vco
+//  .sys_ren_vco    (sys_ren[6]                 ), // read enable for the vco
+//  .sys_rdata_vco  (sys_rdata[ 6*32+31: 6*32]  ), // read data for the vco
+//  .sys_err_vco    (sys_err[6]                 ), // error indicator for the vco
+//  .sys_ack_vco    (sys_ack[6]                 ), // acknowledge signal for the vco
+//  // communication bus for the mux
+//  .sys_wen_mux    (sys_wen[5]                 ), // write enable for the mux
+//  .sys_ren_mux    (sys_ren[5]                 ), // read enable for the mux
+//  .sys_rdata_mux  (sys_rdata[ 5*32+31: 5*32]  ), // read data for the mux
+//  .sys_err_mux    (sys_err[5]                 ), // error indicator for the mux
+//  .sys_ack_mux    (sys_ack[5]                 ), // acknowledge signal for the mux
+//  // output
+//  .DACa_out       ( to_DAC0                  ), // output to the dac (from vco or directly from dpll)
+//  .DACb_out       ( to_DAC1                  )  // output to the dac (from vco or directly from dpll)
+//  );
 
-assign dac_a = to_DAC0;
-assign dac_b = to_DAC1;
+//assign dac_a = to_DAC0;
+//assign dac_b = to_DAC1;
 
 
 ////////////////////////////////////////////////////////////////////////////////

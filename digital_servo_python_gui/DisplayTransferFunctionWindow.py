@@ -17,7 +17,7 @@ import copy
 
 import os
 import errno
-
+from user_friendly_QLineEdit import user_friendly_QLineEdit
 # stuff for Python 3 port
 import pyqtgraph as pg
 
@@ -230,7 +230,7 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         self.qcombo_units.currentIndexChanged.connect(self.updateGraph)
 
         self.qlabel_SeriesImpedance = Qt.QLabel('Series Impedance [Ohms]:')
-        self.qedit_SeriesImpedance = Qt.QLineEdit('100e3')
+        self.qedit_SeriesImpedance = user_friendly_QLineEdit('100e3')
         self.qedit_SeriesImpedance.editingFinished.connect(self.updateGraph)
 
         self.qchk_display_model = Qt.QCheckBox('Display model')
@@ -252,34 +252,34 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
         # set the default DC gain to the value of the transfer function at the lowest frequency:
 
         self.qlabel_k = Qt.QLabel('DC Gain [dB]')
-        self.qedit_k = Qt.QLineEdit(str(0))
+        self.qedit_k = user_friendly_QLineEdit(str(0))
         self.qedit_k.setMaximumWidth(60)
-        self.qedit_k.textChanged.connect(self.updateGraph)
+        self.qedit_k.editingFinished.connect(self.updateGraph)
 
 
         self.qlabel_f1 = Qt.QLabel('1st order poles')
-        self.qedit_f1 = Qt.QLineEdit('20e3,600e3')
+        self.qedit_f1 = user_friendly_QLineEdit('20e3,600e3')
         self.qedit_f1.setMaximumWidth(120)
-        self.qedit_f1.textChanged.connect(self.updateGraph)
+        self.qedit_f1.editingFinished.connect(self.updateGraph)
 
 
 
 
 
         self.qlabel_f0 = Qt.QLabel('2nd order poles')
-        self.qedit_f0 = Qt.QLineEdit('1.5e6')
+        self.qedit_f0 = user_friendly_QLineEdit('1.5e6')
         self.qedit_f0.setMaximumWidth(120)
-        self.qedit_f0.textChanged.connect(self.updateGraph)
+        self.qedit_f0.editingFinished.connect(self.updateGraph)
 
         self.qlabel_zeta = Qt.QLabel('zeta')
-        self.qedit_zeta = Qt.QLineEdit('0.1')
+        self.qedit_zeta = user_friendly_QLineEdit('0.1')
         self.qedit_zeta.setMaximumWidth(120)
-        self.qedit_zeta.textChanged.connect(self.updateGraph)
+        self.qedit_zeta.editingFinished.connect(self.updateGraph)
 
         self.qlabel_T = Qt.QLabel('Pure delay')
-        self.qedit_T = Qt.QLineEdit('570e-9')
+        self.qedit_T = user_friendly_QLineEdit('570e-9')
         self.qedit_T.setMaximumWidth(60)
-        self.qedit_T.textChanged.connect(self.updateGraph)
+        self.qedit_T.editingFinished.connect(self.updateGraph)
 
 
 
@@ -288,20 +288,20 @@ class DisplayTransferFunctionWindow(QtGui.QWidget):
 
 
         self.qlabel_pgain = Qt.QLabel('P gain [dB]')
-        self.qedit_pgain = Qt.QLineEdit('-100')
+        self.qedit_pgain = user_friendly_QLineEdit('-100')
         self.qedit_pgain.setMaximumWidth(60)
-        self.qedit_pgain.textChanged.connect(self.updateGraph)
+        self.qedit_pgain.editingFinished.connect(self.updateGraph)
 
         self.qlabel_icorner = Qt.QLabel('I corner [Hz]')
-        self.qedit_icorner = Qt.QLineEdit('0')
+        self.qedit_icorner = user_friendly_QLineEdit('0')
         self.qedit_icorner.setMaximumWidth(60)
-        self.qedit_icorner.textChanged.connect(self.updateGraph)
+        self.qedit_icorner.editingFinished.connect(self.updateGraph)
 
 
 
         self.qedit_comment = Qt.QTextEdit('')
 #        self.qedit_comment.setMaximumWidth(80)
-        #self.qedit_comment.textChanged.connect(self.updateGraph)
+        #self.qedit_comment.editingFinished.connect(self.updateGraph)
 
 
 

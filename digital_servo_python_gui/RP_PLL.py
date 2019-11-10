@@ -149,21 +149,24 @@ class RP_PLL_device():
     BUS_OFFSET_GAIN_II_MSBs = 0x5    # [0x7005, 0x7015, 0x7025]
     BUS_OFFSET_GAIN_D = 0x6     # [0x7006, 0x7016, 0x7026]
     BUS_OFFSET_COEF_DF = 0x7    # [0x7007, 0x7017, 0x7027]
-    BUS_OFFSET_GAIN_OL = 0x8 #[0x9010, 0x9011, 0x9012]
+    BUS_OFFSET_GAIN_OL = 0x8    # [0x7008, 0x7018, 0x7028]
+    BUS_OFFSET_LF_SIGN = 0x9    # [0x7009, 0x7019, 0x7029]
+    BUS_OFFSET_MAN_OFFSET_LSBs = 0xA    # [0x700A, 0x701A, 0x702A]
+    BUS_OFFSET_MAN_OFFSET_MSBs = 0xB    # [0x700B, 0x701B, 0x702B]
+
 
     # Loop Filter Constants:
-    N_BITS_DIVIDE_P = [16]*3
-    N_BITS_DIVIDE_I = [48]*3
-    N_BITS_DIVIDE_II = [48]*3
-    N_BITS_DIVIDE_D = [0]*3
-    N_BITS_DIVIDE_DF = [18]*3
+    N_BITS_DIVIDE_P =  [16, 16, 0]
+    N_BITS_DIVIDE_I =  [48, 48, 20]
+    N_BITS_DIVIDE_II = [48, 48, 38]
+    N_BITS_DIVIDE_D =  [0, 0, 0]
+    N_BITS_DIVIDE_DF = [18, 18, 0]
 
-    # Loop Filter Constants:
-    N_BITS_GAIN_P = [32]*3
-    N_BITS_GAIN_I = [64]*3
-    N_BITS_GAIN_II = [64]*3
-    N_BITS_GAIN_D = [32]*3
-    N_BITS_COEF_DF = [18]*3
+    N_BITS_GAIN_P =  [32, 32, 0]
+    N_BITS_GAIN_I =  [64, 64, 64]
+    N_BITS_GAIN_II = [64, 64, 64]
+    N_BITS_GAIN_D =  [32, 32, 0]
+    N_BITS_COEF_DF = [18, 18, 0]
 
     N_CYCLS_DELAY_P = [5]*3 # TODO: put the correct values here
     N_CYCLES_DELAY_I = [8]*3 # TODO: put the correct values here
@@ -208,7 +211,7 @@ class RP_PLL_device():
     #
 
     # Primary DAC Output Address Offsets:
-    BUS_ADDR_DAC_offset = [0x6000, 0x6001, 0x6002] # 0x6002 not actively used
+    BUS_ADDR_DAC_offset = [0x6000, 0x6001, 0x6002]
     BUS_ADDR_dac0_limits = 0x6101
     BUS_ADDR_dac1_limits = 0x6102
     BUS_ADDR_dac2_limit_low = 0x6103 # not actively used
@@ -368,6 +371,7 @@ class RP_PLL_device():
         self.HOST = HOST
         self.PORT = PORT
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         # self.sock.setblocking(1)
         self.sock.settimeout(2)
         self.sock.connect((self.HOST, self.PORT))
@@ -387,7 +391,7 @@ class RP_PLL_device():
             self.sock.sendall(file_data.tobytes())
         except:
             print("RP_PLL.py: write_file_on_remote(): exception while sending file!")
-            self.controller.stopCommunication()
+            self.controller.restartCommunication(ip_addr=self.HOST)
 
     # Function used to send a shell command to the Red Pitaya:
     def send_shell_command(self, strCommand):
@@ -400,7 +404,7 @@ class RP_PLL_device():
             self.sock.sendall(strCommand.encode('ascii'))
         except:
             print("RP_PLL.py: send_shell_command(): exception while sending command!")
-            self.controller.stopCommunication()
+            self.controller.restartCommunication(ip_addr=self.HOST)
 
     # Function used to reboot the monitor-tcp program
     def send_reboot_command(self):
@@ -411,7 +415,7 @@ class RP_PLL_device():
             self.sock.sendall(packet_to_send)
         except:
             print("RP_PLL.py: send_reboot_command(): exception while sending command!")
-            self.controller.stopCommunication()
+            self.controller.restartCommunication(ip_addr=self.HOST)
 
     ###########################################################################
     #--- Zynq I/O Helper Functions
@@ -466,8 +470,7 @@ class RP_PLL_device():
         except:
             print("Unexpected error when writing Zynq register: ",
                   sys.exc_info()[0])
-            self.controller.stopCommunication()
-            raise
+            self.controller.restartCommunication(ip_addr=self.HOST)
 
     # Write 2x Unsigned int16 Zynq Register -----------------------------------
     def write_Zynq_register_2x_uint16(self, address_uint32, data1_uint16, data2_uint16):
@@ -543,6 +546,7 @@ class RP_PLL_device():
 
         Raw buffer can be read by struct.iter_unpack or np.frombuffer.
         '''
+        data_buffer = None
         # Limit the number of 16 bit points
         if number_of_points > self.MAX_SAMPLES_READ_BUFFER:
             number_of_points = self.MAX_SAMPLES_READ_BUFFER
@@ -558,8 +562,7 @@ class RP_PLL_device():
         except:
             print("Unexpected error when reading Zynq buffer: ",
                   sys.exc_info()[0])
-            self.controller.stopCommunication()
-            raise
+            self.controller.restartCommunication(ip_addr=self.HOST)
         # Return unaltered data buffer
         if data_buffer is None:
             data_buffer = bytes()
@@ -567,6 +570,7 @@ class RP_PLL_device():
 
     # Read 32 bit Zynq Register -----------------------------------------------
     def read_Zynq_register_32(self, address_uint32):
+        data_buffer = None
         # Check address alignment
         if address_uint32 % 4:
             raise OSError(('Address {:X} is not evenly divisible by 4.'
@@ -583,8 +587,7 @@ class RP_PLL_device():
         except:
             print("Unexpected error when reading Zynq register: ",
                   sys.exc_info()[0])
-            self.controller.stopCommunication()
-            raise
+            self.controller.restartCommunication(ip_addr=self.HOST)
         # Return unaltered data buffer
         if data_buffer is None:
             data_buffer = (0).to_bytes(4, 'little')

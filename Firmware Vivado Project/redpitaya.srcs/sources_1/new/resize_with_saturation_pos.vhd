@@ -2,23 +2,23 @@
 -- Company: 
 -- Engineer: 
 -- 
--- Create Date:    10:20:22 12/12/2013 
+-- Create Date: 05/24/2019 02:24:18 PM
 -- Design Name: 
--- Module Name:    resize_with_saturation - Behavioral 
+-- Module Name: resize_with_saturation_pos - Behavioral
 -- Project Name: 
 -- Target Devices: 
--- Tool versions: 
--- Description:  This module takes an N_INPUT bits input, and outputs an N_OUTPUT bits output, with
--- N_OUTPUT < N_INPUT, and makes sure that the input is properly saturated so that no wrapping occurs.
--- The delay between input and output is 1 clock cycle.  The "railed_positive" and "railed_negative" outputs indicate whether the 
--- the input was too big to fit in the output, and to which rail the output is clamped.
+-- Tool Versions: 
+-- Description: 
+-- 
 -- Dependencies: 
---
--- Revision: 
+-- 
+-- Revision:
 -- Revision 0.01 - File Created
--- Additional Comments: 
---
+-- Additional Comments:
+-- 
 ----------------------------------------------------------------------------------
+
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
@@ -31,7 +31,7 @@ use IEEE.NUMERIC_STD.ALL;
 --library UNISIM;
 --use UNISIM.VComponents.all;
 
-entity resize_with_saturation is
+entity resize_with_saturation_pos is
 	Generic (
 		N_INPUT : integer := 20;
 		N_OUTPUT : integer := 16
@@ -44,13 +44,13 @@ entity resize_with_saturation is
         railed_negative : out std_logic;
         data_out : out  signed(N_OUTPUT-1 downto 0)
     );
-end resize_with_saturation;
+end resize_with_saturation_pos;
 
-architecture Behavioral of resize_with_saturation is
+architecture Behavioral of resize_with_saturation_pos is
     -- Internal variables
 	-----------------------------------------------------------------------
-	constant MAX_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(1, N_OUTPUT), N_OUTPUT-1)-1;	-- (2^(N_OUTPUT-1)-1)
-	constant MIN_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(-1, N_OUTPUT), N_OUTPUT-1)+1;	-- (-2^(N_OUTPUT-1)+1), avoid "most negative number"
+	constant MAX_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(1, N_OUTPUT), N_OUTPUT-1)-1;  -- (2^(N_OUTPUT-1)-1)
+	constant MIN_VALUE : signed(N_OUTPUT-1 downto 0) := shift_left(to_signed(0, N_OUTPUT), N_OUTPUT-1);	   -- (0), avoid negative numbers
 
 	signal railed_positive_temp : std_logic := '0';
 	signal railed_negative_temp : std_logic := '0';
@@ -59,7 +59,7 @@ architecture Behavioral of resize_with_saturation is
 begin
     -- Resize with saturation and synchronous clear
 	----------------------------------------------------------------
-	-- The output data is clamped between the minimum and maximum values of the output bit size.
+	-- ***describe***
 	--
 	-- data_out = saturate(data_in)
 	-- 1 total clock cycle of delay

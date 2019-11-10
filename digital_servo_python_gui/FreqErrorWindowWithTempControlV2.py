@@ -11,7 +11,7 @@ from PyQt5 import QtGui, Qt, QtCore
 #import PyQt5.Qwt5 as Qwt
 import numpy as np
 import math
-
+from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 import os
 import errno
@@ -237,9 +237,9 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.qbtn_reset = Qt.QPushButton('Clear display')
         self.qbtn_reset.clicked.connect(self.initBuffer)
         self.qlabel_history = Qt.QLabel('Display [s]')
-        self.qedit_history = Qt.QLineEdit('600')
+        self.qedit_history = user_friendly_QLineEdit('600')
         self.qedit_history.setMaximumWidth(40)
-        self.qedit_history.textChanged.connect(self.initBuffer)
+        self.qedit_history.editingFinished.connect(self.initBuffer)
 
 
         self.qchk_fullscale_freq = Qt.QCheckBox('Fullscale Freq Graph')
@@ -255,14 +255,14 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         # Controls for the vertical scale of the frequency graph:
         print(type(self.sl.dev.ADC_CLK_Hz))
         print(self.sl.dev.ADC_CLK_Hz)
-        self.qedit_ymin = Qt.QLineEdit('%f' % (-self.sl.dev.ADC_CLK_Hz/4.))
-        self.qedit_ymax = Qt.QLineEdit('%f' % (self.sl.dev.ADC_CLK_Hz/4.))
+        self.qedit_ymin = user_friendly_QLineEdit('%f' % (-self.sl.dev.ADC_CLK_Hz/4.))
+        self.qedit_ymax = user_friendly_QLineEdit('%f' % (self.sl.dev.ADC_CLK_Hz/4.))
 
         # Controls for Auto Recovery
         self.qchk_autorecover = Qt.QCheckBox('Auto Recover')
         self.qchk_autorecover.setChecked(False)
         self.qlabel_rec_thresh = Qt.QLabel('Recovery Threshold')
-        self.qedit_rec_thresh = Qt.QLineEdit('5')
+        self.qedit_rec_thresh = user_friendly_QLineEdit('5')
         self.qedit_rec_thresh.setMaximumWidth(40)
 
         # Put the two graphs into a vertical box layout, so that they share all the vertical space equally:
@@ -293,20 +293,20 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         if self.client or True:
             # we need to add the controls which implement the temperature control loop:
             self.qlabel_threshold_step = Qt.QLabel('Threshold for step:')
-            self.qedit_threshold_step = Qt.QLineEdit('0.2')
+            self.qedit_threshold_step = user_friendly_QLineEdit('0.2')
             self.qedit_threshold_step.setMaximumWidth(40)
 
 
             self.qlabel_threshold_disable = Qt.QLabel('Threshold for disable:')
-            self.qedit_threshold_disable = Qt.QLineEdit('0.05')
+            self.qedit_threshold_disable = user_friendly_QLineEdit('0.05')
             self.qedit_threshold_disable.setMaximumWidth(40)
 
             self.qlabel_step_size = Qt.QLabel('Step size [deg C]:')
-            self.qedit_step_size = Qt.QLineEdit('0.05')
+            self.qedit_step_size = user_friendly_QLineEdit('0.05')
             self.qedit_step_size.setMaximumWidth(40)
 
             self.qlabel_step_delay = Qt.QLabel('Step delay [s]:')
-            self.qedit_step_delay = Qt.QLineEdit('120')
+            self.qedit_step_delay = user_friendly_QLineEdit('120')
             self.qedit_step_delay.setMaximumWidth(40)
 
             self.qchk_temp_control = Qt.QCheckBox('Temperature control')
@@ -501,7 +501,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 rec_threshold = float(self.qedit_rec_thresh.text())
                 if np.abs(current_dac - dac_mean) > rec_threshold*dac_std:
                 # If the current DAC value is out of bounds, relock to the average
-                    self.sl.set_dac_offset(output_number, int(dac_mean))
+                    self.sl.pll[output_number].set_manual_offset(int(dac_mean))
                     self.xem_gui_mainwindow.qloop_filters[output_number].qchk_lock.setChecked(False)
                     self.xem_gui_mainwindow.qloop_filters[output_number].updateFilterSettings()
                     self.xem_gui_mainwindow.qloop_filters[output_number].qchk_lock.setChecked(True)

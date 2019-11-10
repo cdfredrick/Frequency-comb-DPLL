@@ -514,6 +514,11 @@ class controller(object):
         self.freq_error_window1.startTimers()
         self.freq_error_window2.startTimers()
 
+    def restartCommunication(self, ip_addr="192.160.0.150"):
+        self.stopCommunication()
+        print("Notice: Restarting Communication") #!!!
+        self.startCommunication(ip_addr=ip_addr)
+
 
 
 if __name__ == '__main__':

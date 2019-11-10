@@ -37,10 +37,12 @@ entity triangular_frequency_counter is
 		clk                        : in  std_logic;
 		rst_integration            : in  std_logic;
 		integration_halfway        : in  std_logic;                                        -- used to change the sign of the second integrator's input
-		data_input                 : in  std_logic_vector (N_BITS_INPUT-1 downto 0);
-		data_output_rect           : out std_logic_vector (64-1 downto 0);
+		data_input                 : in  signed (N_BITS_INPUT-1 downto 0);
+		data_output_min            : out signed (N_BITS_INPUT-1 downto 0);
+		data_output_max            : out signed (N_BITS_INPUT-1 downto 0);
+		data_output_rect           : out signed (64-1 downto 0);
 		output_clk_enable_rect     : out std_logic;
-		data_output_triangle       : out std_logic_vector (64-1 downto 0);
+		data_output_triangle       : out signed (64-1 downto 0);
 		output_clk_enable_triangle : out std_logic
 
 	);
@@ -49,8 +51,10 @@ end triangular_frequency_counter;
 architecture Behavioral of triangular_frequency_counter is
 
 	-- 1st Integrator (from frequency to phase)
-	-- scaled appropriately for no wrapping for 200e6 accumulated samples:
-	signal phase_accumulator               : signed(10+28-1 downto 0) := (others => '0');
+	-- scaled appropriately for no wrapping for 125e6 accumulated samples:
+	signal phase_accumulator               : signed(N_BITS_INPUT+28-1 downto 0) := (others => '0');
+	signal phase_minimum                   : signed(N_BITS_INPUT-1 downto 0) := (others => '0');
+	signal phase_maximum                   : signed(N_BITS_INPUT-1 downto 0) := (others => '0');
 	
 	-- 2nd Integrator, used to average over phase values
 	signal rst_integration_delayed         : std_logic := '0';
@@ -60,6 +64,8 @@ architecture Behavioral of triangular_frequency_counter is
 	-- Output stages
 	signal output_register_rect            : signed(64-1 downto 0) := (others => '0');
 	signal output_register_clk_enable_rect : std_logic := '0';
+	signal output_register_min            : signed(N_BITS_INPUT-1 downto 0) := (others => '0');
+	signal output_register_max            : signed(N_BITS_INPUT-1 downto 0) := (others => '0');
 	
 	signal output_register_tri             : signed(64-1 downto 0) := (others => '0');
 	signal output_register_clk_enable_tri  : std_logic := '0';
@@ -74,24 +80,35 @@ begin
 
 			if rst_integration = '1' then
 				-- restart integration:
-				phase_accumulator <= resize(signed(data_input), phase_accumulator'length);
-
+				phase_accumulator <= resize(data_input, phase_accumulator'length);
+                phase_minimum <= data_input;
+                phase_maximum <= data_input;
 			else
 				-- integrate normally:
-				phase_accumulator <= phase_accumulator + resize(signed(data_input), phase_accumulator'length);
+				phase_accumulator <= phase_accumulator + resize(data_input, phase_accumulator'length);
 				output_register_clk_enable_rect <= '0';
+				if data_input < phase_minimum then
+				    phase_minimum <= phase_minimum;
+				end if;
+				if data_input > phase_maximum then
+				    phase_maximum <= data_input;
+				end if;
 			end if;
 			
 			if integration_halfway = '1' then
 				-- dump output for "type Pi" or "rectangular averaging" counter:
 				output_register_rect <= resize(phase_accumulator, output_register_rect'length);
 				output_register_clk_enable_rect <= '1';
+				output_register_min <= phase_minimum;
+				output_register_max <= phase_maximum;
 			end if;
 				
 		end if;
 	end process;
-	data_output_rect <= std_logic_vector(output_register_rect);
+	data_output_rect <= output_register_rect;
 	output_clk_enable_rect <= output_register_clk_enable_rect;
+	data_output_min <= output_register_min;
+	data_output_max <= output_register_max;
 	
 	-- Integrator to average over phase values.
 	-- Changes integration sign in the middle of the integration window
@@ -142,7 +159,7 @@ begin
 			
 		end if;
 	end process;
-	data_output_triangle <= std_logic_vector(output_register_tri);
+	data_output_triangle <= output_register_tri;
 	output_clk_enable_triangle <= output_register_clk_enable_tri;
 
 end Behavioral;

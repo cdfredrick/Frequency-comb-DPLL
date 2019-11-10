@@ -141,19 +141,19 @@ end
 //
 
 wire        [12-1:0]    boxcar_filter_size = 12'd20;    // Filter with a notch at 5 MHz: 125MHz/5MHz = 25 samples
-wire signed [48-1:0]    reference_frequency0;
+wire signed [48-1:0]    manual_reference_frequency0, reference_frequency0; // Reference frequency 0 is controlled by PLL 2
 wire signed [10-1:0]    wrapped_phase0; // phi/(2*pi) * 2**10
-wire signed [10-1:0]    inst_frequency0;    // diff(phi)/(2*pi) * 2**10
+wire signed [10-1:0]    DDC0_freq_output;   // diff(phi)/(2*pi) * 2**10
 wire signed [(10+12)-1:0]   inst_frequency0_filtered;   // this is the output of a boxcar filter on the inst_frequency signal, before sending to the DDR2 logger
 wire signed [(10+2)-1:0]    inst_frequency0_filtered_small; // overall filter gain is only equal to its length (4) so we don't really need all the bits
 wire [2-1:0]    ddc0_filter_select, ddc1_filter_select;
 wire select_phase_or_freq0, select_phase_or_freq1;
 wire [4-1:0]    angleSelect_0, angleSelect_1;
+wire manual_reference_frequency0_changed;
 
 wire signed [48-1:0]    reference_frequency1;
 wire signed [10-1:0]    wrapped_phase1;     // phi/(2*pi) * 2**10
 wire signed [10-1:0]    DDC1_freq_output;   // diff(phi)/(2*pi) * 2**10
-wire signed [10-1:0]    inst_frequency1;    // diff(phi)/(2*pi) * 2**10 //now output from the mux that select between DDC1_freq_output, inst_frequency0 or pll0_output
 wire signed [(10+12)-1:0]   inst_frequency1_filtered;   // this is the output of a boxcar filter on the inst_frequency signal, before sending to the DDR2 logger
 wire signed [(10+2)-1:0]    inst_frequency1_filtered_small; // overall filter gain is only equal to its length (4) so we don't really need all the bits
 
@@ -170,8 +170,8 @@ parallel_bus_register_64_bits_or_less # (
      .bus_strobe(cmd_trig), 
      .bus_address(cmd_addr), 
      .bus_data({cmd_data2in, cmd_data1in}), 
-     .register_output(reference_frequency0), 
-     .update_flag()
+     .register_output(manual_reference_frequency0),
+     .update_flag(manual_reference_frequency0_changed)
 );
 
 // "Phase or Frequency" and DDC Filter Selection Registers
@@ -241,7 +241,7 @@ DDC_wideband_filters DDC0_inst (
      // Output
     .amplitude(), 
     .wrapped_phase(wrapped_phase0), 
-    .inst_frequency(inst_frequency0)
+    .inst_frequency(DDC0_freq_output)
 );
      
 //-----------------------------------------------------------------------------
@@ -282,18 +282,23 @@ DDC_wideband_filters DDC1_inst (
 // Address Offsets
 localparam LF_CH0_ADDR = 16'h7000;
 localparam LF_CH1_ADDR = 16'h7010;
+localparam LF_CH2_ADDR = 16'h7020;
 
-localparam LF_LOCK_ADDR_OFFSET =    16'h0000;
-localparam LF_GAIN_P_ADDR_OFFSET =  16'h0001;
+localparam LF_LOCK_ADDR_OFFSET =         16'h0000;
+localparam LF_GAIN_P_ADDR_OFFSET =       16'h0001;
 localparam LF_GAIN_I_ADDR_OFFSET_LSBs =  16'h0002;
 localparam LF_GAIN_I_ADDR_OFFSET_MSBs =  16'h0003;
 localparam LF_GAIN_II_ADDR_OFFSET_LSBs = 16'h0004;
 localparam LF_GAIN_II_ADDR_OFFSET_MSBs = 16'h0005;
-localparam LF_GAIN_D_ADDR_OFFSET =  16'h0006;
-localparam LF_COEF_DF_ADDR_OFFSET = 16'h0007;
-localparam LF_GAIN_OL_ADDR_OFFSET = 16'h0008;
+localparam LF_GAIN_D_ADDR_OFFSET =       16'h0006;
+localparam LF_COEF_DF_ADDR_OFFSET =      16'h0007;
+localparam LF_GAIN_OL_ADDR_OFFSET =      16'h0008;
+localparam LF_SIGN_ADDR_OFFSET =         16'h0009;
+localparam LF_MAN_OFFSET_ADDR_OFFSET_LSBs =   16'h000A;
+localparam LF_MAN_OFFSET_ADDR_OFFSET_MSBs =   16'h000B;
 
 // Channel 0 Loop Filter
+wire pll0_lf_sign;
 wire signed [32-1:0] pll0_gainp, pll0_gaind;
 wire signed [64-1:0] pll0_gaini, pll0_gainii;
 wire signed [18-1:0] pll0_coefdfilter;
@@ -301,16 +306,19 @@ wire signed [16-1:0] pll0_output;
 wire signed [16-1:0] pll0_manual_offset;
 reg signed [16-1:0]  pll0_offset_reg = 16'h0000;
 
+wire signed [10-1:0]    inst_frequency0;    // diff(phi)/(2*pi) * 2**10
+
 wire pll0_lock, pll0_gain_changedp, pll0_gain_changedi, pll0_gain_changedii, pll0_gain_changedd, pll0_coef_changedd;
-wire pll0_gain_changed, pll0_offset_changed;
+wire pll0_offset_changed;
+reg pll0_changed = 1;
 wire signed [32-1:0] phase_residuals0;
 
 // Multiplexer for Channel 1 Input
 wire [2-1:0] loop_filter_1_mux_selector;
-wire signed [(10-1):0] inst_frequency0_to_pll1;
-wire signed [(10-1):0] pll0_output_to_pll1;
+wire signed [(10-1):0] pll1_mux_output;
 
 // Channel 1 Loop Filter
+wire pll1_lf_sign;
 wire signed [32-1:0] pll1_gainp, pll1_gaind;
 wire signed [64-1:0] pll1_gaini, pll1_gainii;
 wire signed [18-1:0] pll1_coefdfilter;
@@ -318,9 +326,25 @@ wire signed [16-1:0] pll1_output;
 wire signed [16-1:0] pll1_manual_offset;
 reg signed [16-1:0]  pll1_offset_reg = 16'h0000;
 
+wire signed [10-1:0]    inst_frequency1;    // diff(phi)/(2*pi) * 2**10
+
 wire pll1_lock, pll1_gain_changedp, pll1_gain_changedi, pll1_gain_changedii, pll1_gain_changedd, pll1_coef_changedd;
-wire pll1_gain_changed, pll1_offset_changed;
+wire pll1_offset_changed;
+reg pll1_changed = 1;
 wire signed [32-1:0] phase_residuals1;
+
+// Channel 2 Loop Filter
+wire pll2_lf_sign;
+wire signed [64-1:0] pll2_gaini, pll2_gainii;
+wire signed [48-1:0] pll2_manual_offset, pll2_output;
+reg signed [48-1:0]  pll2_offset_reg = 0;
+
+wire signed [10-1:0]    inst_frequency2;    // diff(phi)/(2*pi) * 2**10
+
+wire pll2_lock, pll2_gain_changedi, pll2_gain_changedii;
+wire pll2_offset_changed;
+reg pll2_changed = 1;
+wire signed [32-1:0] phase_residuals2;
 
 //-----------------------------------------------------------------------------
 // Channel 0 Loop Filters Input Registers:
@@ -414,7 +438,7 @@ parallel_bus_register_32bits_or_less # (
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(16),
     .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(16'h6000)
+    .ADDRESS(LF_CH0_ADDR+LF_MAN_OFFSET_ADDR_OFFSET_LSBs)
 ) parallel_bus_register_manual_offset_pll0 (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -422,6 +446,20 @@ parallel_bus_register_32bits_or_less # (
     .bus_data({cmd_data2in, cmd_data1in}), 
     .register_output(pll0_manual_offset), 
     .update_flag(pll0_offset_changed)
+);
+
+// Channel 0 Loop Filter Sign Register
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(1),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH0_ADDR+LF_SIGN_ADDR_OFFSET)
+) parallel_bus_register_lf_sign_pll0 (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll0_lf_sign), 
+    .update_flag()
 );
 
 //-----------------------------------------------------------------------------
@@ -516,7 +554,7 @@ parallel_bus_register_32bits_or_less # (
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(16),
     .REGISTER_DEFAULT_VALUE(0),
-    .ADDRESS(16'h6001)
+    .ADDRESS(LF_CH1_ADDR+LF_MAN_OFFSET_ADDR_OFFSET_LSBs)
 ) parallel_bus_register_manual_offset_pll1 (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -524,6 +562,20 @@ parallel_bus_register_32bits_or_less # (
     .bus_data({cmd_data2in, cmd_data1in}), 
     .register_output(pll1_manual_offset), 
     .update_flag(pll1_offset_changed)
+);
+
+// Channel 1 Loop Filter Sign Register
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(1),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH1_ADDR+LF_SIGN_ADDR_OFFSET)
+) parallel_bus_register_lf_sign_pll1 (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll1_lf_sign), 
+    .update_flag()
 );
 
 // Channel 1 Input Multiplexer Register
@@ -541,18 +593,94 @@ parallel_bus_register_32bits_or_less # (
 );
 
 //-----------------------------------------------------------------------------
+// Channel 2 Loop Filters Input Registers:
+//
+
+// Channel 2 Lock Enable Register
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(1),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH2_ADDR+LF_LOCK_ADDR_OFFSET)
+) parallel_bus_register_pll2_settings (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll2_lock), 
+    .update_flag()
+);
+
+// Channel 2 Integral Gain Register 
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(64),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH2_ADDR+LF_GAIN_I_ADDR_OFFSET_LSBs) // + LF_GAIN_I_ADDR_OFFSET_MSBs
+) parallel_bus_register_pll2_gaini (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll2_gaini), 
+    .update_flag(pll2_gain_changedi)
+);
+
+// Channel 2 Double Integral Gain Register
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(64),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH2_ADDR+LF_GAIN_II_ADDR_OFFSET_LSBs) // + LF_GAIN_II_ADDR_OFFSET_MSBs
+) parallel_bus_register_pll2_gainii (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll2_gainii), 
+    .update_flag(pll2_gain_changedii)
+);
+
+// Channel 2 Manual Offset Register
+parallel_bus_register_64_bits_or_less # (
+    .REGISTER_SIZE(48),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH2_ADDR+LF_MAN_OFFSET_ADDR_OFFSET_LSBs) // + LF_MAN_OFFSET_ADDR_OFFSET_MSBs
+) parallel_bus_register_manual_offset_pll2 (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll2_manual_offset), 
+    .update_flag(pll2_offset_changed)
+);
+
+// Channel 2 Loop Filter Sign Register
+parallel_bus_register_32bits_or_less # (
+    .REGISTER_SIZE(1),
+    .REGISTER_DEFAULT_VALUE(0),
+    .ADDRESS(LF_CH2_ADDR+LF_SIGN_ADDR_OFFSET)
+) parallel_bus_register_lf_sign_pll2 (
+    .clk(clk1), 
+    .bus_strobe(cmd_trig), 
+    .bus_address(cmd_addr), 
+    .bus_data({cmd_data2in, cmd_data1in}), 
+    .register_output(pll2_lf_sign), 
+    .update_flag()
+);
+
+//-----------------------------------------------------------------------------
 // Channel 0 Loop Filter:
 //
 
-// This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
-assign pll0_gain_changed = pll0_gain_changedp | pll0_gain_changedi | pll0_gain_changedii | pll0_gain_changedd | pll0_coef_changedd;
+// Change the sign of the input based on the chosen sign of the VCO gain
+assign inst_frequency0 = pll0_lf_sign ? (-DDC0_freq_output) : DDC0_freq_output;
 
-always @(posedge clk1)
-    if (pll0_offset_changed) begin
+// This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
+always @(posedge clk1) begin
+    if (pll0_offset_changed)
         pll0_offset_reg <= pll0_manual_offset;
-    end else if (pll0_lock) begin
+    else if (pll0_lock)
         pll0_offset_reg <= pll0_output;
-    end
+    pll0_changed <= pll0_gain_changedi | pll0_gain_changedii | pll0_coef_changedd | pll0_offset_changed;
+end
 
 // Finally the PLL itself:
 PLL_loop_filters_with_saturation # (
@@ -564,7 +692,7 @@ PLL_loop_filters_with_saturation # (
 ) PLL0_loop_filters (
     .clk(clk1), 
     .lock(pll0_lock), 
-    .gain_changed(pll0_gain_changed), 
+    .pll_changed(pll0_changed), 
     .data_in(inst_frequency0), 
     .gain_p(pll0_gainp), 
     .gain_i(pll0_gaini), 
@@ -582,32 +710,32 @@ PLL_loop_filters_with_saturation # (
 // Multiplexer for Channel 1 Input:
 //
 
-// Change the sign of the input based on the chosen sign of the VCO gain (sign of the reference frequency)
-assign inst_frequency0_to_pll1 = reference_frequency1[47] ? (-inst_frequency0) : inst_frequency0;
-assign pll0_output_to_pll1 = reference_frequency1[47] ? (-pll0_output >> 6) : (pll0_output >> 6); // pll0_output is 16 bits and in2_mux is 10 bits. Keep MSBs
-
-multiplexer_3to1_async loop_filters_1_mux (
- .clk                               (clk1                       ),
+multiplexer_3to1_async # (
+  .SIGNAL_LENGTH(10)
+) loop_filters_1_mux (
  .selector_mux                      (loop_filter_1_mux_selector ),
  .in0_mux                           (DDC1_freq_output           ), 
- .in1_mux                           (inst_frequency0_to_pll1    ),
- .in2_mux                           (pll0_output_to_pll1        ),
- .out_mux                           (inst_frequency1            )
+ .in1_mux                           (DDC0_freq_output           ),
+ .in2_mux                           (pll0_output >> 6           ), // pll0_output is 16 bits and in2_mux is 10 bits. Keep MSBs
+ .out_mux                           (pll1_mux_output            )
 );
+
 
 //-----------------------------------------------------------------------------
 // Channel 1 Loop Filter:
 //
 
-// This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
-assign pll1_gain_changed = pll1_gain_changedp | pll1_gain_changedi | pll1_gain_changedii | pll1_coef_changedd;
+// Change the sign of the input based on the chosen sign of the VCO gain
+assign inst_frequency1 = pll1_lf_sign ? (-pll1_mux_output) : pll1_mux_output;
 
-always @(posedge clk1)
-    if (pll1_offset_changed) begin
+// This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
+always @(posedge clk1) begin
+    if (pll1_offset_changed)
         pll1_offset_reg <= pll1_manual_offset;
-    end else if (pll1_lock) begin
+    else if (pll1_lock)
         pll1_offset_reg <= pll1_output;
-    end
+    pll1_changed <= pll1_gain_changedi | pll1_gain_changedii | pll1_coef_changedd | pll1_offset_changed;
+end
 
 // Finally PLL 1 itself:
 PLL_loop_filters_with_saturation # (
@@ -619,7 +747,7 @@ PLL_loop_filters_with_saturation # (
 ) PLL1_loop_filters (
     .clk(clk1), 
     .lock(pll1_lock), 
-    .gain_changed(pll1_gain_changed), 
+    .pll_changed(pll1_changed), 
     .data_in(inst_frequency1),
     .gain_p(pll1_gainp), 
     .gain_i(pll1_gaini), 
@@ -633,6 +761,45 @@ PLL_loop_filters_with_saturation # (
     .saturated_high()
 );
 
+
+//-----------------------------------------------------------------------------
+// Channel 2 Loop Filter:
+//
+
+// Change the sign of the input based on the chosen sign of the VCO gain
+assign inst_frequency2 = pll2_lf_sign ? (-DDC1_freq_output) : DDC1_freq_output;
+
+// This is used for bumpless change of the gain settings (TODO, most probably in the output summing block)
+always @(posedge clk1) begin
+    if (manual_reference_frequency0_changed)
+        pll2_offset_reg <= manual_reference_frequency0;
+    else if (pll2_offset_changed)
+        pll2_offset_reg <= pll2_manual_offset;
+    else if (pll2_lock)
+        pll2_offset_reg <= pll2_output;
+    pll2_changed <= pll2_gain_changedi | pll2_gain_changedii | pll2_offset_changed;
+end
+
+// Finally PLL 2 itself:
+PLL_loop_filters_RF_to_optical # (
+    .N_DIVIDE_I(48),
+    .N_DIVIDE_II(48),
+    .N_OUTPUT(48)
+) PLL2_loop_filters (
+    .clk(clk1), 
+    .lock(pll2_lock), 
+    .pll_changed(pll2_changed), 
+    .data_in(inst_frequency2),
+    .gain_i(pll2_gaini), 
+    .gain_ii(pll2_gainii),
+    .offset_in(pll2_offset_reg),
+    .phase_residuals(phase_residuals2),
+    .data_out(pll2_output),
+    .saturated_low(),
+    .saturated_high()
+);
+
+assign reference_frequency0 = pll2_output;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Dither Generator and Lock-In: 
@@ -912,6 +1079,9 @@ wire counter0_out_clk_enable, counter0_out_clk_enable_faster;
 wire signed [64-1:0] counter1_out;
 wire counter1_out_clk_enable;
 
+wire signed [64-1:0] counter2_out;
+wire counter2_out_clk_enable;
+
 //-----------------------------------------------------------------------------
 // Frequency Counter Input Registers:
 //
@@ -962,6 +1132,22 @@ dual_type_frequency_counter dual_type_frequency_counter_inst1 (
     .output_clk_enable(counter1_out_clk_enable)
 );
 
+//-----------------------------------------------------------------------------
+// Channel 2 Counter:
+//
+
+dual_type_frequency_counter dual_type_frequency_counter_inst2 (
+    .rst(rst_frontend0),    // the 0 here is not a typo: we want the two counters to stay synchronized even during a reset
+    .clk(clk1), 
+    .data_input(inst_frequency2), 
+    .N_gate_time(32'd125000000), 
+    .N_times_faster_gate_time(32'd125000000), 
+    .triangular_mode(triangular_mode), 
+    .output_clk_enable_N_times_faster(), 
+    .data_output(counter2_out), 
+    .output_clk_enable(counter2_out_clk_enable)
+);
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Data Logger Interface:
@@ -1000,17 +1186,16 @@ parallel_bus_register_32bits_or_less # (
 multiplexer_NbitsxMsignals_to_Nbits # (
     .N_bits_per_signal(17)  // 16 bits per signal + clock enable in MSB : simply put a static 1'b1 if signal is always valid
 ) multiplexer_NbitsxMsignals_to_Nbits_inst (
-    .clk(clk1), 
+    .clk(clk1),
     .in0({1'b1, ADC0_multiplexed}), 
     .in1({1'b1, ADC1_multiplexed}), 
     .in2({1'b1, {6{inst_frequency0[10-1]}}, inst_frequency0}), // Inst freq after DDC 0, sign extended to 16 bits
-    .in3({1'b1, {6{inst_frequency1[10-1]}}, inst_frequency1}), // Inst freq after DDC 1, sign extended to 16 bits
+    .in3({1'b1, {6{inst_frequency1[10-1]}}, inst_frequency1}), // Error signal into PLL 1, sign extended to 16 bits
     .in4({VNA_output_to_logger_clk_enable, VNA_output_to_logger}), // VNA output
     .in5({1'b1, debugging_counter[16-1:0]}),  // counter, simply for debugging the DDR2 Logger/USB link
     .in6({1'b1, DACout0[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
     .in7({1'b1, DACout1[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
-    .in8({1'b1, 16'b0}),
-    //.in9({crash_monitor_output_to_logger_clk_enable, crash_monitor_output_to_logger}),
+    .in8({1'b1, {6{inst_frequency2[10-1]}}, inst_frequency2}), // Inst freq after DDC 1, sign extended to 16 bits
     .in9({1'b0, 8'b0}),
     .selector(selector[4:0]), 
     .selected_output({LoggerData_clk_enable, LoggerData})
@@ -1194,7 +1379,7 @@ Status_LED_driver # (
 //          h0027 - dither0_lockin_output_reg[64-1:32], MSBs
 //      h0029 - dither1_lockin_output[32-1:0], LSBs (writes MSBs to register)
 //          h002A - dither1_lockin_output_reg[64-1:32], MSBs
-//      h0030 - zdtc_samples_number_counter (synchronously writes counter0_out, counter1_out, DAC0_out, DAC1_out to registers)
+//      h0030 - zdtc_samples_number_counter (synchronously registers counter0_out, counter1_out, DAC0_out, DAC1_out)
 //          h0031 - counter0_out_reg[32-1:0], LSBs
 //          h0032 - counter0_out_reg[64-1:32], MSBs
 //          h0033 - counter1_out_reg[32-1:0], LSBs
@@ -1255,7 +1440,7 @@ registers_read registers_read_inst (
     .DAC1_out({  {16{DACout1[15]}} , DACout1}),
 
     // internal configuration bus
-    .cmd_addr        (  cmd_addr                       ),  // address, note the divide by 4 again to map between zynq addresses and the legacy DPLL addresses
+    .cmd_addr        (  cmd_addr                       ),  // address
     .sys_wdata       (  sys_wdata                      ),  // write data
     .sys_sel         (  sys_sel                        ),  // write byte select
     .sys_wen         (  sys_wen                        ),  // write enable

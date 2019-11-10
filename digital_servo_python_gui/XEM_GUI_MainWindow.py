@@ -145,6 +145,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
     def getValues(self):
         self.getDACoffset()
+        self.get_LF_sign()
         self.getVCOFreq()
 
         self.qloop_filters[self.selected_ADC].getValues() # We should get qloop_filters.kc here
@@ -169,6 +170,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
         # Send values to FPGA
+        self.set_LF_sign_event()
         self.setVCOFreq_event()
         self.setVCOGain_event()
         # self.setDACOffset_event()  # not needed because setVCOGain_event calls it anyway
@@ -200,7 +202,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             if self.output_controls[k] == True:
                 # Slider units are the same as DAC counts
                 counts_offset = int(self.q_dac_offset[k].value())
-                self.sl.set_dac_offset(k, counts_offset)
+                self.sl.pll[k].set_manual_offset(counts_offset)
                 try:
                     VCO_gain_in_Hz_per_Volts = float(self.qedit_vco_gain[k].text())
                 except:
@@ -215,7 +217,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         for k in range(3):
             if self.output_controls[k] == True:
                 self.sl.get_dac_limits(k)
-                counts_offset = self.sl.get_dac_offset(k)
+                counts_offset = self.sl.pll[k].get_manual_offset()
                 # Slider units are the same as DAC counts
                 q_dac_offset = counts_offset
 
@@ -328,16 +330,28 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         # Update label
         self.qlabel_pwm0_value.setText('%.2f V' % (value_in_volts))
 
+    def set_LF_sign_event(self):
+        '''If the VCO has positive sign, we need to put a negative reference
+        frequency to make the total loop sign be negative so that it's stable
+        when we close the loop. This is taken care of on the FPGA.
+        '''
+        lf_sign = 1 if self.qsign_positive.isChecked() else -1
+        self.sl.pll[self.selected_ADC].set_lf_sign(lf_sign)
+
+    def get_LF_sign(self):
+        '''If the VCO has positive sign, we need to put a negative reference
+        frequency to make the total loop sign be negative so that it's stable
+        when we close the loop. This is taken care of on the FPGA.
+        '''
+        lf_sign = self.sl.pll[self.selected_ADC].get_lf_sign()
+        self.qsign_positive.setChecked(lf_sign)
+
     def setVCOFreq_event(self):
         try:
             frequency_in_hz = float(self.qedit_ref_freq.text())
         except:
             frequency_in_hz = 5e6
 
-        # If the VCO has positive sign, we need to put a negative reference frequency to make the
-        # total loop sign be negative so that it's stable when we close the loop
-        if self.qsign_positive.isChecked():
-            frequency_in_hz = -frequency_in_hz
 #        print('frequency_in_hz = %e' % frequency_in_hz)
         if self.selected_ADC == 0:
             self.sl.set_ddc0_ref_freq(frequency_in_hz)
@@ -349,15 +363,6 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             frequency_in_hz = self.sl.get_ddc0_ref_freq_from_RAM()
         elif self.selected_ADC == 1:
             frequency_in_hz = self.sl.get_ddc1_ref_freq_from_RAM()
-
-        # If the VCO has positive sign, we need to put a negative reference frequency to make the
-        # total loop sign be negative so that it's stable when we close the loop
-        if frequency_in_hz < 0:
-            self.qsign_positive.setChecked(True)
-        else:
-            self.qsign_negative.setChecked(True)
-
-
 
         self.qedit_ref_freq.blockSignals(True)
         self.qedit_ref_freq.setText('%.2e' % abs(frequency_in_hz))
@@ -381,6 +386,13 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         self.timerID = self.startTimer(int(round(timer_delay)))
         self.timerEvent(0)  # run the event handler once right away, makes the checkbox feel more responsive
 #            print('Starting timer')
+
+    def set_oscp_points(self):
+        self.oscp_points = int(float(self.qedit_rawdata_length.text()))
+
+    def set_ddc_points(self):
+        self.ddc_points = int(float(self.qedit_ddc_length.text()))
+        self.ddc_n_avg = int(round(float(self.qedit_spc_averaging.text())))
 
     def exportData(self):
         # First need to create a unique file name template (with good probability)
@@ -768,7 +780,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             self.qlabel_detected_vco_gain_label = Qt.QLabel('Detected VCO Gain [Hz/V]:')
 
             self.qedit_vco_gain[0] = user_friendly_QLineEdit('1e6')
-            self.qedit_vco_gain[0].returnPressed.connect(self.setVCOGain_event)
+            self.qedit_vco_gain[0].editingFinished.connect(self.setVCOGain_event)
             self.qedit_vco_gain[0].setMaximumWidth(60)
 
             self.qlabel_detected_vco_gain[0] = Qt.QLabel('0 Hz/V')
@@ -782,11 +794,11 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             self.qlabel_detected_vco_gain_label = Qt.QLabel('Detected VCO Gain [Hz/V]:')
 
             self.qedit_vco_gain[1] = user_friendly_QLineEdit('1e6')
-            self.qedit_vco_gain[1].returnPressed.connect(self.setVCOGain_event)
+            self.qedit_vco_gain[1].editingFinished.connect(self.setVCOGain_event)
             self.qedit_vco_gain[1].setMaximumWidth(60)
 
             # self.qedit_vco_gain[2] = user_friendly_QLineEdit('1e6')
-            # self.qedit_vco_gain[2].returnPressed.connect(self.setVCOGain_event)
+            # self.qedit_vco_gain[2].editingFinished.connect(self.setVCOGain_event)
             # self.qedit_vco_gain[2].setMaximumWidth(60)
 
             self.qlabel_detected_vco_gain[1] = Qt.QLabel('0 Hz/V')
@@ -799,7 +811,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         # DDC reference frequency:
         self.qlabel_ref_freq = Qt.QLabel('Reference freq [Hz]:')
         self.qedit_ref_freq = user_friendly_QLineEdit('5e6')
-        self.qedit_ref_freq.returnPressed.connect(self.setVCOFreq_event)
+        self.qedit_ref_freq.editingFinished.connect(self.setVCOFreq_event)
         self.qedit_ref_freq.setMaximumWidth(60)
 
 
@@ -825,8 +837,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         self.qsign_positive.setChecked(True)
         self.qsign_negative.setChecked(False)
-        self.qsign_positive.clicked.connect(self.setVCOFreq_event)
-        self.qsign_negative.clicked.connect(self.setVCOFreq_event)
+        self.qsign_positive.clicked.connect(self.set_LF_sign_event)
+        self.qsign_negative.clicked.connect(self.set_LF_sign_event)
 
 
         # Create widgets to indicate performance
@@ -837,8 +849,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
         self.qlabel_timerdelay = Qt.QLabel('Refresh delay [ms]:')
-        self.qedit_timerdelay = user_friendly_QLineEdit('200')
-        self.qedit_timerdelay.returnPressed.connect(self.refreshChk_event)
+        self.qedit_timerdelay = user_friendly_QLineEdit('100')
+        self.qedit_timerdelay.editingFinished.connect(self.refreshChk_event)
         self.qedit_timerdelay.setMaximumWidth(60)
 
 
@@ -1070,7 +1082,9 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         # Create widgets to set the number of points for the graphs:
         self.qlabel_rawdata_rbw = Qt.QLabel('RBW: 100 kHz')
         self.qlabel_rawdata_pnts = Qt.QLabel('Points:')
-        self.qedit_rawdata_length = Qt.QLineEdit('1.73e3')
+        self.oscp_points = 1.73e3
+        self.qedit_rawdata_length = user_friendly_QLineEdit("{:.3g}".format(self.oscp_points))
+        self.qedit_rawdata_length.editingFinished.connect(self.set_oscp_points)
         self.qedit_rawdata_length.setMaximumWidth(60)
 
         # Plot type select
@@ -1262,12 +1276,14 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         # Create widgets to set the number of points for the DDC graphs:
         self.qlabel_ddc_rbw = Qt.QLabel('RBW: 100 kHz; Points:')
-        self.qedit_ddc_length = Qt.QLineEdit('32.768e3') # this used to be 3e5 in the Dave Leibrant box version, but was changed to 16e3 due to RedPitaya memory limitations
+        self.ddc_points = 32.768e3
+        self.qedit_ddc_length = user_friendly_QLineEdit('{:.5g}'.format(self.ddc_points)) # this used to be 3e5 in the Dave Leibrant box version, but was changed to 16e3 due to RedPitaya memory limitations
+        self.qedit_ddc_length.editingFinished.connect(self.set_ddc_points)
         self.qedit_ddc_length.setMaximumWidth(60)
 
         # Create widgets to set the higher frequency of the integration:
         self.qlabel_cumul_integral = Qt.QLabel('Integration\nlimit [Hz]:')
-        self.qedit_cumul_integral = Qt.QLineEdit('5e6')
+        self.qedit_cumul_integral = user_friendly_QLineEdit('5e6')
         self.qedit_cumul_integral.setMaximumWidth(60)
 
         # Display mean frequency error:
@@ -1279,15 +1295,17 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         # X and Y limits for the plot:
         self.qlbl_xlims = Qt.QLabel('Xmin, Xmax')
-        self.qedit_xlims = Qt.QLineEdit('3e3, 5e6')
+        self.qedit_xlims = user_friendly_QLineEdit('3e3, 5e6')
         self.qedit_xlims.setMaximumWidth(60)
         self.qlbl_ylims = Qt.QLabel('Ymin, Ymax')
-        self.qedit_ylims = Qt.QLineEdit('-100, -30')
+        self.qedit_ylims = user_friendly_QLineEdit('-100, -30')
         self.qedit_ylims.setMaximumWidth(60)
 
         # Averaging controls: # Averages (1=off)
         self.qlbl_spc_averaging = Qt.QLabel('# Averages\n(1=off)')
-        self.qedit_spc_averaging = Qt.QLineEdit('1')
+        self.ddc_n_avg = 1
+        self.qedit_spc_averaging = user_friendly_QLineEdit('{:d}'.format(self.ddc_n_avg))
+        self.qedit_spc_averaging.editingFinished.connect(self.set_ddc_points)
         self.qedit_spc_averaging.setMaximumWidth(60)
 
         # Create the frequency domain plot for the DDC0
@@ -1502,6 +1520,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         bUpdateFPGA = True
         # Send values to FPGA
         if bUpdateFPGA == True:
+            self.set_LF_sign_event()
             self.setVCOFreq_event()
             self.setVCOGain_event()
             # self.setDACOffset_event()  # not needed because setVCOGain_event calls it anyway
@@ -1687,7 +1706,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         # Read from DDC0
         try:
-            N_points = int(float(self.qedit_ddc_length.text()))
+            N_points = self.ddc_points
         except:
             N_points = 100e3
         if N_points < 64:
@@ -1755,7 +1774,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 #            # Compute the running average:
         # Compute spectrum averaging with exponential smoothing (simple first-order IIR filter)
         try:
-            n_spc_avg = int(round(float(self.qedit_spc_averaging.text())))
+            n_spc_avg = self.ddc_n_avg
             if n_spc_avg > 1.:
                 self.bAveragePhaseNoise = True
                 self.N_spc_average = n_spc_avg
@@ -1983,7 +2002,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         self.sl.bDDR2InUse = True
 
         try:
-            N_points = int(float(self.qedit_rawdata_length.text()))
+            N_points = self.oscp_points
         except:
             N_points = 4e3
 

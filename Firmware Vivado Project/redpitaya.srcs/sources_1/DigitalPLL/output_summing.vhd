@@ -33,7 +33,7 @@ entity output_summing is
 	Generic (
 		INPUT_SIZE : integer := 16;
 		OUTPUT_SIZE : integer := 16;
-		GUARD_BITS : integer := 6
+		GUARD_BITS : integer := 2
 		
 	
 	);
@@ -42,9 +42,9 @@ entity output_summing is
            in1 : in  STD_LOGIC_VECTOR(INPUT_SIZE-1 downto 0);
            in2 : in  STD_LOGIC_VECTOR(INPUT_SIZE-1 downto 0);
            in3 : in  STD_LOGIC_VECTOR(INPUT_SIZE-1 downto 0);
-           data_output : out  STD_LOGIC_VECTOR(OUTPUT_SIZE-1 downto 0);
-			  positive_limit : in STD_LOGIC_VECTOR(OUTPUT_SIZE-1 downto 0);
-			  negative_limit : in STD_LOGIC_VECTOR(OUTPUT_SIZE-1 downto 0);
+		   positive_limit : in STD_LOGIC_VECTOR(OUTPUT_SIZE-1 downto 0);
+		   negative_limit : in STD_LOGIC_VECTOR(OUTPUT_SIZE-1 downto 0);
+		   data_output : out  STD_LOGIC_VECTOR(OUTPUT_SIZE-1 downto 0);
            railed_positive : out  STD_LOGIC;
            railed_negative : out  STD_LOGIC);
 end output_summing;

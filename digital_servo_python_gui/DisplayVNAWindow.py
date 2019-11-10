@@ -15,7 +15,7 @@ import numpy as np
 from DisplayTransferFunctionWindow import DisplayTransferFunctionWindow
 import weakref
 import SuperLaserLand_JD_RP
-
+from user_friendly_QLineEdit import user_friendly_QLineEdit
 import sys # only used for sys.stdout.flush() because Syper's console sometimes doesn't show all print() outputs before crashing...
 
 class DisplayVNAWindow(QtGui.QWidget):
@@ -343,7 +343,7 @@ class DisplayVNAWindow(QtGui.QWidget):
 
         #
         settling_time_label = Qt.QLabel('System settling time [s]:')
-        self.qedit_settling_time = Qt.QLineEdit('1e-3')
+        self.qedit_settling_time = user_friendly_QLineEdit('1e-3')
         self.qedit_settling_time.setMaximumWidth(60)
         self.qedit_settling_time.editingFinished.connect(self.updateIntegrationTime)
 
@@ -351,24 +351,24 @@ class DisplayVNAWindow(QtGui.QWidget):
 #        self.qedit_settling_time.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Fixed)
 
         freq_start_label = Qt.QLabel('Freq start [Hz]:')
-        self.qedit_freq_start = Qt.QLineEdit('10e3')
+        self.qedit_freq_start = user_friendly_QLineEdit('10e3')
         self.qedit_freq_start.setMaximumWidth(60)
         self.qedit_freq_start.editingFinished.connect(self.updateIntegrationTime)
 #        freq_start_label.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Fixed)
 #        self.qedit_freq_start.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Fixed)
 
         freq_end_label = Qt.QLabel('Freq end [Hz]:')
-        self.qedit_freq_end = Qt.QLineEdit('2e6')
+        self.qedit_freq_end = user_friendly_QLineEdit('2e6')
         self.qedit_freq_end.setMaximumWidth(60)
 #        self.qedit_freq_end.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Fixed)
 
         freq_number_label = Qt.QLabel('Number of freq [max 3276]:')
-        self.qedit_freq_number = Qt.QLineEdit('160')
+        self.qedit_freq_number = user_friendly_QLineEdit('160')
         self.qedit_freq_number.setMaximumWidth(60)
 #        self.qedit_freq_number.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Fixed)
 
         amplitude_label = Qt.QLabel('Modulation amplitude [0-1]:')
-        self.qedit_output_amplitude = Qt.QLineEdit('0.01')
+        self.qedit_output_amplitude = user_friendly_QLineEdit('0.01')
         self.qedit_output_amplitude.setMaximumWidth(60)
 #        self.qedit_output_amplitude.setSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Fixed)
 
@@ -406,14 +406,14 @@ class DisplayVNAWindow(QtGui.QWidget):
 
         # Modulation frequency:
         self.qedit_freq_label = Qt.QLabel('Frequency [Hz]:')
-        self.qedit_dither_freq = Qt.QLineEdit('1e6')
-        self.qedit_dither_freq.textChanged.connect(self.ditherClicked)
+        self.qedit_dither_freq = user_friendly_QLineEdit('1e6')
+        self.qedit_dither_freq.editingFinished.connect(self.ditherClicked)
         self.qedit_dither_freq.setMaximumWidth(60)
 
         # Amplitude:
         self.qlabel_dither_amplitude = Qt.QLabel('Amplitude [0-1]:')
-        self.qedit_dither_amplitude = Qt.QLineEdit('0.01')
-        self.qedit_dither_amplitude.textChanged.connect(self.ditherClicked)
+        self.qedit_dither_amplitude = user_friendly_QLineEdit('0.01')
+        self.qedit_dither_amplitude.editingFinished.connect(self.ditherClicked)
         self.qedit_dither_amplitude.setMaximumWidth(60)
 
         # Sine/Square wave

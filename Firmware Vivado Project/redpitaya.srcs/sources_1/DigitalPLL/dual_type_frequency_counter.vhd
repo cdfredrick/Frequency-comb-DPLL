@@ -36,11 +36,11 @@ entity dual_type_frequency_counter is
     Port (
 		rst                              : in  std_logic;
 		clk                              : in  std_logic;
-		data_input                       : in  std_logic_vector(N_BITS_INPUT-1 downto 0);
+		data_input                       : in  signed(N_BITS_INPUT-1 downto 0);
 		
 		
 		-- Gate time must be an even number
-		-- many of the internal signals are scaled appropriately for a gate time of 100e6 samples.  Using any other value than this will require careful verification of the arithmetic.
+		-- many of the internal signals are scaled appropriately for a gate time of 125e6 samples.  Using any other value than this will require careful verification of the arithmetic.
 		N_gate_time                      : in  std_logic_vector(32-1 downto 0);
 		-- this must be an integer divisor of N_GATE_TIME for the two counters to stay synced.
 		N_times_faster_gate_time         : in  std_logic_vector(32-1 downto 0);
@@ -48,7 +48,7 @@ entity dual_type_frequency_counter is
 		
 		
 		output_clk_enable_N_times_faster : out std_logic;    -- used to drive another output pipe (the DAC output logger) at exactly N times the rate of the counter data
-		data_output                      : out std_logic_vector(64-1 downto 0);
+		data_output                      : out signed(64-1 downto 0);
 		output_clk_enable                : out std_logic
 	 );
 end dual_type_frequency_counter;
@@ -62,7 +62,7 @@ architecture Behavioral of dual_type_frequency_counter is
 	
 	
 	-- input register, to help with timing/fanout
-	signal data_input_register1, data_input_register2			    : std_logic_vector(N_BITS_INPUT-1 downto 0) := (others => '0');
+	signal data_input_register1, data_input_register2			    : signed(N_BITS_INPUT-1 downto 0) := (others => '0');
 	
 	
 	-- signals used to interface to the integrators:
@@ -71,8 +71,8 @@ architecture Behavioral of dual_type_frequency_counter is
 	
 	
 	-- integrators output signals:
-	signal data_output_rect1, data_output_rect2						: std_logic_vector(64-1 downto 0) := (others => '0');
-	signal data_output_triangle1, data_output_triangle2				: std_logic_vector(64-1 downto 0) := (others => '0');
+	signal data_output_rect1, data_output_rect2						: signed(64-1 downto 0) := (others => '0');
+	signal data_output_triangle1, data_output_triangle2				: signed(64-1 downto 0) := (others => '0');
 	signal output_clk_enable_rect1, output_clk_enable_rect2			: std_logic := '0';
 	signal output_clk_enable_triangle1, output_clk_enable_triangle2	: std_logic := '0';
 			
@@ -81,7 +81,7 @@ architecture Behavioral of dual_type_frequency_counter is
 			
 	-- output signals:
 	signal output_clk_enable_internal : std_logic := '0';
-	signal output_register : std_logic_vector(64-1 downto 0) := (others => '0');
+	signal output_register : signed(64-1 downto 0) := (others => '0');
 begin
 
 	process (clk)

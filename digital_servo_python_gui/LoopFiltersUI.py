@@ -167,11 +167,11 @@ class LoopFiltersUI(Qt.QWidget):
         self.qedit_fii.setMaximumWidth(100)
         self.qedit_fd.setMaximumWidth(100)
         self.qedit_fdf.setMaximumWidth(100)
-        self.qedit_kp.returnPressed.connect(self.textboxChanged)
-        self.qedit_fi.returnPressed.connect(self.textboxChanged)
-        self.qedit_fii.returnPressed.connect(self.textboxChanged)
-        self.qedit_fd.returnPressed.connect(self.textboxChanged)
-        self.qedit_fdf.returnPressed.connect(self.textboxChanged)
+        self.qedit_kp.editingFinished.connect(self.textboxChanged)
+        self.qedit_fi.editingFinished.connect(self.textboxChanged)
+        self.qedit_fii.editingFinished.connect(self.textboxChanged)
+        self.qedit_fd.editingFinished.connect(self.textboxChanged)
+        self.qedit_fdf.editingFinished.connect(self.textboxChanged)
 
 
         self.qchk_bKpCrossing = Qt.QCheckBox('fi refer to kp crossover')

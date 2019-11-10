@@ -9,7 +9,6 @@ Generic (
 );
 
 port (
-	clk										: in  std_logic;
 	selector_mux							: in  std_logic_vector(2-1 downto 0);
     
     -- mux

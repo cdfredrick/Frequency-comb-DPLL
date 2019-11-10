@@ -8,7 +8,7 @@ from __future__ import print_function
 import time
 from PyQt5 import QtGui, Qt
 import numpy as np
-
+from user_friendly_QLineEdit import user_friendly_QLineEdit
 import weakref
 #from SuperLaserLand_JD2 import SuperLaserLand_JD2
 #from DisplayTransferFunctionWindow import DisplayTransferFunctionWindow
@@ -328,11 +328,11 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
 
 
         self.qlbl_modulus = Qt.QLabel('Modulus [2, 2^32-1], [samples at 200 MHz]:')
-        self.qedit_modulus = Qt.QLineEdit(str(int(self.clk_divider_modulus+1)))
+        self.qedit_modulus = user_friendly_QLineEdit(str(int(self.clk_divider_modulus+1)))
         self.qedit_modulus.editingFinished.connect(self.updateClicked)
 
         self.qlbl_phaseinc = Qt.QLabel('Time increment [-Period, Period], [seconds]:')
-        self.qedit_phaseinc = Qt.QLineEdit('0')
+        self.qedit_phaseinc = user_friendly_QLineEdit('0')
 #        self.qedit_phaseinc.editingFinished.connect(self.phaseIncrement)
         self.qbtn_phaseinc = Qt.QPushButton('Apply')
         self.qbtn_phaseinc.clicked.connect(self.phaseIncrement)
@@ -397,18 +397,18 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
 
 
         self.qlbl_data_delay = Qt.QLabel('Data delay, [samples at 100 MHz]:')
-        self.qedit_data_delay = Qt.QLineEdit('1')
-        self.qedit_data_delay.textChanged.connect(self.residualsClicked)
+        self.qedit_data_delay = user_friendly_QLineEdit('1')
+        self.qedit_data_delay.editingFinished.connect(self.residualsClicked)
         self.qedit_data_delay.setMaximumWidth(60)
 
         self.qlbl_trigger_delay = Qt.QLabel('Trigger delay, [samples at 100 MHz]:')
-        self.qedit_trigger_delay = Qt.QLineEdit('1')
-        self.qedit_trigger_delay.textChanged.connect(self.residualsClicked)
+        self.qedit_trigger_delay = user_friendly_QLineEdit('1')
+        self.qedit_trigger_delay.editingFinished.connect(self.residualsClicked)
         self.qedit_trigger_delay.setMaximumWidth(60)
 
         self.qlbl_boxcar_size = Qt.QLabel('Boxcar filter size, [samples at 100 MHz]:')
-        self.qedit_boxcar_size = Qt.QLineEdit('10')
-        self.qedit_boxcar_size.textChanged.connect(self.residualsClicked)
+        self.qedit_boxcar_size = user_friendly_QLineEdit('10')
+        self.qedit_boxcar_size.editingFinished.connect(self.residualsClicked)
         self.qedit_boxcar_size.setMaximumWidth(60)
 
         # Saturated or modulo phase 0:

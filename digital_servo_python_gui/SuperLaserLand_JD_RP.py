@@ -68,7 +68,6 @@ class SuperLaserLand_JD_RP:
         self.ddc1_int_phase_incr = self.DDS_phase_increment_parameter(self.ddc0_frequency_in_hz)
         self.DACs_limit_low = self.dev.DAC_LIM_LOW_INT[:] # [:] returns copy
         self.DACs_limit_high = self.dev.DAC_LIM_HIGH_INT[:]
-        self.DACs_offset = [0, 0, 0]
 
         self.output_vco = [0, 0, 0]
 
@@ -296,8 +295,6 @@ class SuperLaserLand_JD_RP:
             self.log_file.write('set_ddc0_ref_freq()\n')
         # Calculate nearest phase increment parameter
         self.ddc0_int_phase_incr = self.DDS_phase_increment_parameter(frequency_in_hz)
-        # Wrap by the number of bits in the phase accumulator
-        self.ddc0_int_phase_incr = self.ddc0_int_phase_incr
         # Calculate the actual frequency
         self.ddc0_frequency_in_hz = self.DDS_frequency(self.ddc0_int_phase_incr)
         # Write to FPGA
@@ -333,8 +330,6 @@ class SuperLaserLand_JD_RP:
             self.log_file.write('set_ddc1_ref_freq()\n')
         # Calculate nearest phase increment parameter
         self.ddc1_int_phase_incr = self.DDS_phase_increment_parameter(frequency_in_hz)
-        # Wrap by the number of bits in the phase accumulator
-        self.ddc1_int_phase_incr = self.ddc1_int_phase_incr
         # Calculate the actual frequency
         self.ddc1_frequency_in_hz = self.DDS_frequency(self.ddc1_int_phase_incr)
         # Write to FPGA
@@ -703,24 +698,6 @@ class SuperLaserLand_JD_RP:
     #--------------------------------------------------------------------------
     # Read/Write Primary DAC Output Settings:
     #
-
-    def set_dac_offset(self, dac_number, offset_int):
-        if self.bVerbose == True:
-            print('set_dac_offset')
-        if self.bCommunicationLogging == True:
-            self.log_file.write('set_dac_offset()\n')
-        self.DACs_offset[dac_number] = offset_int
-        self.dev.write_Zynq_register_int16(
-                self.dev.dpll_write_address(self.dev.BUS_ADDR_DAC_offset[dac_number]),
-                offset_int)
-
-    def get_dac_offset(self, dac_number):
-        if self.bVerbose == True:
-            print('get_dac_offset')
-        offset_int = self.dev.read_Zynq_register_int16(
-                self.dev.dpll_read_address(self.dev.BUS_ADDR_DAC_offset[dac_number]))
-        self.DACs_offset[dac_number] = offset_int
-        return offset_int
 
     def set_dac_limits(self, dac_number, limit_low_int, limit_high_int, bSendToFPGA = True):
         assert isinstance(limit_low_int, int)

@@ -2,21 +2,23 @@
 -- Company: 
 -- Engineer: 
 -- 
--- Create Date:    16:48:26 12/09/2013 
+-- Create Date: 05/24/2019 02:20:48 PM
 -- Design Name: 
--- Module Name:    integrator_with_saturation - Behavioral 
+-- Module Name: integrator_with_saturation_pos - Behavioral
 -- Project Name: 
 -- Target Devices: 
--- Tool versions: 
+-- Tool Versions: 
 -- Description: 
---
--- Dependencies: helper_functions.vhd, contains the max_local function: This is a copy-paste of the numeric_std.vhd max() function; I am not sure why the compiler doesn't want to use that one.
---
--- Revision: 
+-- 
+-- Dependencies: 
+-- 
+-- Revision:
 -- Revision 0.01 - File Created
--- Additional Comments: 
---
+-- Additional Comments:
+-- 
 ----------------------------------------------------------------------------------
+
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
@@ -33,7 +35,7 @@ use work.helper_functions.all;
 --library UNISIM;
 --use UNISIM.VComponents.all;
 
-entity integrator_with_saturation is
+entity integrator_with_saturation_pos is
 	Generic (
 		N_INPUT : integer := 20;
 		N_OUTPUT : integer := 16
@@ -49,9 +51,9 @@ entity integrator_with_saturation is
         railed_positive_out : out std_logic;
         railed_negative_out : out std_logic
     );
-end integrator_with_saturation;
+end integrator_with_saturation_pos;
 
-architecture Behavioral of integrator_with_saturation is
+architecture Behavioral of integrator_with_saturation_pos is
     -- Internal variables
 	-----------------------------------------------------------------------
 	constant N_BITS_TEMP : integer := MAX_local(N_INPUT, N_OUTPUT)+2;	-- the extra bits are to hold the full, unwrapped result
@@ -59,7 +61,7 @@ architecture Behavioral of integrator_with_saturation is
 	signal temp_sum : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
 	
 	constant ACCUM_MAX : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(1, N_BITS_TEMP), N_OUTPUT-1)-1;	   -- (2^(N_OUTPUT-1)-1)
-	constant ACCUM_MIN : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(-1, N_BITS_TEMP), N_OUTPUT-1)+1;   -- (-2**(N_OUTPUT-1)+1), avoid the "most negative number"
+	constant ACCUM_MIN : signed(N_BITS_TEMP-1 downto 0) := shift_left(to_signed(0, N_BITS_TEMP), N_OUTPUT-1);      -- (0), avoid negative numbers.
 
 	-- for debug only:
 	-- signal temp_sum_signal : signed(N_BITS_TEMP-1 downto 0) := (others => '0');
@@ -120,4 +122,3 @@ begin
 	data_out <= accumulator;
 
 end Behavioral;
-

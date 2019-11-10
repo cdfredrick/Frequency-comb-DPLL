@@ -12,7 +12,7 @@ from PyQt5 import QtGui, Qt
 import UDPRedPitayaDiscovery
 
 import time
-
+from user_friendly_QLineEdit import user_friendly_QLineEdit
 from RP_PLL import RP_PLL_device # needed to update FPGA firmware and CPU (Zynq) software
 import socket
 
@@ -64,9 +64,9 @@ class initialConfiguration(QtGui.QDialog):
         self.qcombo_serial.setMinimumContentsLength(100)    # I can't figure out how to make it scale correctly with content so we'll make it big enough...
         self.qcombo_serial.setSizeAdjustPolicy(Qt.QComboBox.AdjustToMinimumContentsLength)
 
-        self.qedit_broadcast = Qt.QLineEdit(self.strBroadcastAddress)
-        self.qedit_firmware = Qt.QLineEdit(self.strFPGAFirmware)
-        self.qedit_software = Qt.QLineEdit(self.strCPUFirmware)
+        self.qedit_broadcast = user_friendly_QLineEdit(self.strBroadcastAddress)
+        self.qedit_firmware = user_friendly_QLineEdit(self.strFPGAFirmware)
+        self.qedit_software = user_friendly_QLineEdit(self.strCPUFirmware)
 
         self.qbtn_send_broadcast = Qt.QPushButton('Broadcast discovery packet')
         self.qbtn_reprogram_fpga = Qt.QPushButton('Update FPGA firmware')
@@ -113,7 +113,7 @@ class initialConfiguration(QtGui.QDialog):
         self.qradio_usefromlist.setChecked(True)
 
         self.qlabel_manual_entry = Qt.QLabel('Manual IP entry')
-        self.qedit_manual_entry = Qt.QLineEdit('192.168.0.150')
+        self.qedit_manual_entry = user_friendly_QLineEdit('192.168.0.150')
 
 
         gridIP.addWidget(self.qradio_usefromtextbox, 0, 0)

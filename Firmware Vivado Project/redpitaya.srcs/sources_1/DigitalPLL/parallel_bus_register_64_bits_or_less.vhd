@@ -50,7 +50,9 @@ architecture Behavioral of parallel_bus_register_64_bits_or_less is
 --	signal register_msbs					: std_logic_vector(32-1 downto 0) := std_logic_vector(to_unsigned(0 , 32));
 	signal output							: std_logic_vector(64-1 downto 0) := std_logic_vector(to_unsigned(0 , 64));
 	
-	signal update_flag_internal		: std_logic := '0';
+	signal update_flag_internal		        : std_logic := '0';
+	signal update		                    : std_logic := '0';
+	signal output_internal                  : std_logic_vector(64-1 downto 0) := std_logic_vector(to_unsigned(0 , 64));
 begin
 
 	process (clk)
@@ -63,16 +65,19 @@ begin
 			-- update the MSBs: also updates the output
 			if bus_strobe = '1' and bus_address = std_logic_vector(to_unsigned(ADDRESS+1, bus_address'length)) then
 --				register_msbs <= bus_data;
-				output <= bus_data & register_lsbs;
+				output_internal <= bus_data & register_lsbs;
 				update_flag_internal <= '1';
 			else
 				update_flag_internal <= '0';
 			end if;
+			-- Extra registers for timing closure
+			output <= output_internal;
+			update <= update_flag_internal;
 		end if;
 	end process;
 	
 	register_output <= output(register_output'range);
-	update_flag <= update_flag_internal;
+	update_flag <= update;
 	
 end Behavioral;
 

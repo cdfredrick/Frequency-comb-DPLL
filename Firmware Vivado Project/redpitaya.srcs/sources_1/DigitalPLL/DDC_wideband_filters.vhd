@@ -294,6 +294,7 @@ begin
     -- CORDIC Phase:
     ----------------
     -- Compute the angle and the abs() of the IQ signal
+    -- 15 clock cycles of delay
     CORDIC_inst : angle_CORDIC
     PORT MAP (
         aclk => clk,

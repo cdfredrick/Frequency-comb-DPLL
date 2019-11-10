@@ -135,12 +135,12 @@ class ConfigRPSettingsUI(Qt.QWidget):
 
         self.qlabel_int_vco_amplitude = Qt.QLabel('Internal VCO Amplitude [0-1]')
         self.qedit_int_vco_amplitude = user_friendly_QLineEdit('0.5')
-        self.qedit_int_vco_amplitude.returnPressed.connect(self.setInternalVCO_amplitude)
+        self.qedit_int_vco_amplitude.editingFinished.connect(self.setInternalVCO_amplitude)
         self.qedit_int_vco_amplitude.setMaximumWidth(60)
 
         self.qlabel_int_vco_offset = Qt.QLabel('Internal VCO offset [0-1]')
         self.qedit_int_vco_offset = user_friendly_QLineEdit('0.0')
-        self.qedit_int_vco_offset.returnPressed.connect(self.setInternalVCO_offset)
+        self.qedit_int_vco_offset.editingFinished.connect(self.setInternalVCO_offset)
         self.qedit_int_vco_offset.setMaximumWidth(60)
 
         MUX_vco.addWidget(self.qradio_VCO_to_DAC0,     0, 0)
