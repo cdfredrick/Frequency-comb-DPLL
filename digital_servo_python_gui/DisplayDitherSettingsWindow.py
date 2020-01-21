@@ -3,7 +3,6 @@ XEM6010 Phase-lock box GUI, Dither settings controls
 by JD Deschenes, October 2013
 
 """
-from __future__ import print_function
 
 import time
 from PyQt5 import QtGui, Qt
@@ -12,19 +11,21 @@ import numpy as np
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 import weakref
-#from SuperLaserLand_JD2 import SuperLaserLand_JD2
+from digital_servo import SuperLaserLand
 #from DisplayTransferFunctionWindow import DisplayTransferFunctionWindow
 
 
 class DisplayDitherSettingsWindow(QtGui.QWidget):
 
-    def __init__(self, sl, sp, output_number, modulation_frequency_in_hz=1e3, output_amplitude=1e-4, integration_time_in_seconds=0.1, bEnableDither=0, custom_style_sheet=''):
+    def __init__(self, sll, sp, output_number, modulation_frequency_in_hz=1e3, output_amplitude=1e-4, integration_time_in_seconds=0.1, bEnableDither=0, custom_style_sheet=''):
+        assert isinstance(sll, SuperLaserLand)
+
         super(DisplayDitherSettingsWindow, self).__init__()
 
 
 
         self.output_number = output_number
-        self.sl = weakref.proxy(sl)
+        self.sll = weakref.proxy(sll)
         self.sp = sp
         self.setObjectName('MainWindow')
         self.setStyleSheet(custom_style_sheet)
@@ -72,21 +73,16 @@ class DisplayDitherSettingsWindow(QtGui.QWidget):
         self.ditherClicked()
 
     def getValues(self):
-        (modulation_period, N_periods, output_amplitude, bEnableDither, mode_auto) = self.sl.get_Dither_Settings(self.output_number)
+        (modulation_frequency_in_hz, integration_time_in_seconds, output_amplitude_V,
+         mode_auto, bEnableDither) = self.sll.loop_filter.get_dither_settings(self.output_number)
 
-        modulation_frequency_in_hz = round(self.sl.dev.ADC_CLK_Hz/modulation_period)
         self.qedit_dither_freq.blockSignals(True)
         self.qedit_dither_freq.setText('{:.1e}'.format(modulation_frequency_in_hz))
         self.qedit_dither_freq.blockSignals(False)
 
-        amplitude = output_amplitude*2/(self.sl.DACs_limit_high[self.output_number]-self.sl.DACs_limit_low[self.output_number])
-
         self.qedit_dither_amplitude.blockSignals(True)
-        self.qedit_dither_amplitude.setText('{:.2e}'.format(amplitude))
+        self.qedit_dither_amplitude.setText('{:.2e}'.format(output_amplitude_V))
         self.qedit_dither_amplitude.blockSignals(False)
-
-        integration_time_in_samples = N_periods*modulation_period
-        integration_time_in_seconds = integration_time_in_samples/self.sl.dev.ADC_CLK_Hz
 
         self.qedit_integration_time.blockSignals(True)
         self.qedit_integration_time.setText('{:.3f}'.format(integration_time_in_seconds))
@@ -108,30 +104,6 @@ class DisplayDitherSettingsWindow(QtGui.QWidget):
         # Integration time
         # On/Off/Auto
 
-        try:
-            modulation_frequency_in_hz = float(self.qedit_dither_freq.text())
-        except:
-            modulation_frequency_in_hz = 1e3
-            pass
-
-
-        try:
-            output_amplitude = int((self.sl.DACs_limit_high[self.output_number]-self.sl.DACs_limit_low[self.output_number])/2.*float(self.qedit_dither_amplitude.text()))
-        except:
-            output_amplitude = 0
-            pass
-        if output_amplitude == 0:
-            output_amplitude = 1
-
-        try:
-            integration_time_in_seconds = float(self.qedit_integration_time.text())
-        except:
-            integration_time_in_seconds = 0.1
-            pass
-
-#        try:
-
-
         if self.qchk_mode_auto.isChecked():
             mode_auto = 1
             bEnableDither = 0
@@ -141,28 +113,42 @@ class DisplayDitherSettingsWindow(QtGui.QWidget):
                 bEnableDither = 0
             else:
                 bEnableDither = 1
-#        except:
-#            bEnableDither = 0
-#            mode_auto = 0
-#            pass
+
+        try:
+            output_amplitude = float(self.qedit_dither_amplitude.text())
+        except:
+            output_amplitude = 0
+        if output_amplitude > 1:
+            output_amplitude = 1
+        if output_amplitude <= 0:
+            output_amplitude = 0
+            mode_auto = 0
+            bEnableDither = 0
+
+        try:
+            modulation_frequency_in_hz = float(self.qedit_dither_freq.text())
+        except:
+            modulation_frequency_in_hz = 1e3
+            pass
+
+        try:
+            integration_time_in_seconds = float(self.qedit_integration_time.text())
+        except:
+            integration_time_in_seconds = 0.1
+            pass
 
         return (integration_time_in_seconds, modulation_frequency_in_hz, output_amplitude, bEnableDither, mode_auto)
 
 
 
     def ditherClicked(self):
-        (integration_time_in_seconds, modulation_frequency_in_hz, output_amplitude, bEnableDither, mode_auto) = self.readDitherSettings()
-
-#        print('(output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither) = %d, %f, %f, %d, %d' % (output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither))
-        modulation_period = round(self.sl.dev.ADC_CLK_Hz/modulation_frequency_in_hz)
-        integration_time_in_samples = integration_time_in_seconds*self.sl.dev.ADC_CLK_Hz
-        N_periods = np.ceil(integration_time_in_samples/modulation_period)
-        self.sl.setupDitherLockIn(self.output_number, modulation_period, N_periods, output_amplitude, mode_auto)
+        (integration_time_in_seconds, modulation_frequency_in_hz, output_amplitude_V, bEnableDither, mode_auto) = self.readDitherSettings()
 
         if mode_auto == 0:
             # Manual mode:
-            #print('bEnableDither = %d' % bEnableDither)
-            self.sl.setDitherLockInState(self.output_number, bEnableDither)
+            self.sll.loop_filter.set_dither_lock_in_parameters(self.output_number, modulation_frequency_in_hz, integration_time_in_seconds, output_amplitude_V, mode_auto, bEnableDither)
+        else:
+            self.sll.loop_filter.set_dither_lock_in_parameters(self.output_number, modulation_frequency_in_hz, integration_time_in_seconds, output_amplitude_V, mode_auto)
 
         return
 

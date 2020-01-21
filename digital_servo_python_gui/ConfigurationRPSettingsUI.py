@@ -17,15 +17,17 @@ import traceback
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 
-from SuperLaserLand_JD_RP import SuperLaserLand_JD_RP
+from digital_servo import SuperLaserLand
 
 
 class ConfigRPSettingsUI(Qt.QWidget):
     """docstring for ConfigRP"""
-    def __init__(self, sl, sp, controller, custom_style_sheet='', custom_shorthand=''):
+    def __init__(self, sll, sp, controller, custom_style_sheet='', custom_shorthand=''):
+        assert isinstance(sll, SuperLaserLand)
+
         super(ConfigRPSettingsUI, self).__init__()
         print('ConfigRPSettingsUI::__init(): Entering')
-        self.sl = weakref.proxy(sl)
+        self.sll = weakref.proxy(sll)
         self.sp = sp
         self.setObjectName('MainWindow')
         self.setStyleSheet(custom_style_sheet)
@@ -88,7 +90,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
         #get value from the memory of the red pitaya
 
         #get value for the VCO connection
-        mux_vco = self.sl.get_mux_vco()
+        mux_vco = self.sll.dac.get_mux_vco()
         if mux_vco == 1:
             self.qradio_VCO_to_DAC0.setChecked(True)
         elif mux_vco == 2:
@@ -97,19 +99,19 @@ class ConfigRPSettingsUI(Qt.QWidget):
             self.qradio_no_VCO.setChecked(True)
 
         #get value for the VCO amplitude
-        amplitude = self.sl.get_internal_VCO_amplitude()
+        amplitude = self.sll.dac.get_internal_VCO_amplitude()
         self.qedit_int_vco_amplitude.blockSignals(True)
         self.qedit_int_vco_amplitude.setText('{:.3f}'.format(amplitude))
         self.qedit_int_vco_amplitude.blockSignals(False)
 
         #get value for the VCO offset
-        offset = self.sl.get_internal_VCO_offset()
+        offset = self.sll.dac.get_internal_VCO_offset()
         self.qedit_int_vco_offset.blockSignals(True)
         self.qedit_int_vco_offset.setText('{:.3f}'.format(offset))
         self.qedit_int_vco_offset.blockSignals(False)
 
         #get value for the pll1 connection
-        mux_pll1 = self.sl.pll[1].read_pll1_mux()
+        mux_pll1 = self.sll.loop_filter.read_loop_filter_input_mux(1)
         if mux_pll1 == 0:
             self.qradio_ddc1_to_pll1.setChecked(True)
         elif mux_pll1 == 1:
@@ -259,17 +261,17 @@ class ConfigRPSettingsUI(Qt.QWidget):
     def read_RP(self):
         addr = int(self.qedit_addr.text(),16)
         bus_address = (2 << 20) + addr*4
-        value = str(self.sl.dev.read_Zynq_register_uint32(bus_address))
+        value = str(self.sll.dev.read_Zynq_register_uint32(bus_address))
         self.qedit_data.blockSignals(True)
         self.qedit_data.setText(value)
         self.qedit_data.blockSignals(False)
 
         # bus_address = (2 << 20) + 0x9001*4
-        # value = str(self.sl.dev.read_Zynq_register_uint32(bus_address))
+        # value = str(self.sll.dev.read_Zynq_register_uint32(bus_address))
         # print(value)
 
         # bus_address = (2 << 20) + 0x9000*4
-        # value = str(self.sl.dev.read_Zynq_register_uint32(bus_address))
+        # value = str(self.sll.dev.read_Zynq_register_uint32(bus_address))
         # print(value)
 
 
@@ -288,7 +290,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
 
     def setFan(self):
         # Set the output of 2 IO pins (0 or 3.3V) for the activation of the fan
-        self.sl.setFan(self.qradio_fan_on.isChecked())
+        self.sll.setFan(self.qradio_fan_on.isChecked())
 
     def mux_vco_Action(self):
         if self.qradio_VCO_to_DAC0.isChecked():
@@ -297,7 +299,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
             data = 2
         else:  # no VCO is checked
             data = 0
-        self.sl.set_mux_vco(data)
+        self.sll.dac.set_mux_vco(data)
 
 
     def setInternalVCO_offset(self):
@@ -308,7 +310,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
         if int_vco_offset < -1.0 or int_vco_offset > 1.0:
             int_vco_offset = 0.0
 
-        self.sl.set_internal_VCO_offset(int_vco_offset)
+        self.sll.dac.set_internal_VCO_offset(int_vco_offset)
 
     def setInternalVCO_amplitude(self):
         try:
@@ -321,7 +323,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
             self.qedit_int_vco_amplitude.setText('{:.3f}'.format(int_vco_amplitude))
             self.qedit_int_vco_amplitude.blockSignals(False)
 
-        self.sl.set_internal_VCO_amplitude(int_vco_amplitude)
+        self.sll.dac.set_internal_VCO_amplitude(int_vco_amplitude)
 
     def mux_pll1_Action(self):
         if self.qradio_ddc0_to_pll1.isChecked():
@@ -330,7 +332,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
             data = 2
         else: #self.qradio_ddc1_to_pll1.isChecked()
             data = 0
-        self.sl.pll[1].set_mux_pll1(data)
+        self.sll.loop_filter.set_loop_filter_input_mux(1, data)
 
 
 
@@ -341,8 +343,8 @@ if __name__ == '__main__':
     if app is None:
         app = QtWidgets.QApplication(sys.argv)
 
-    sl = SuperLaserLand_JD_RP()
-    w = ConfigRPSettingsUI(sl)
+    sll = SuperLaserLand()
+    w = ConfigRPSettingsUI(sll)
     w.show()
     w.resize(800, 300)
 

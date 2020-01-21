@@ -4,23 +4,22 @@ Created on Fri Dec 13 16:24:57 2013
 
 @author: jnd
 """
-from __future__ import print_function
 
 # This class implements a thin wrapper around the ElementTree/Element classes, which does XML parsing/writing.
 # This allows us change the implementation if we want, without having to rewrite the UI code.
 # from xml.etree.ElementTree import ElementTree as ET, Element
 import xml.etree.ElementTree as ET
 
-import SuperLaserLand_JD_RP
+from digital_servo import SuperLaserLand
 
 
 class SLLSystemParameters():
 
     values_dict = {}
 
-    def __init__(self, sl):
-        assert isinstance(sl, SuperLaserLand_JD_RP.SuperLaserLand_JD_RP)
-        self.sl = sl
+    def __init__(self, sll):
+        assert isinstance(sll, SuperLaserLand)
+        self.sll = sll
 
         self.populateDefaults()
 
@@ -90,19 +89,13 @@ class SLLSystemParameters():
         # Set the DAC output limits:
         limit_low = float(self.getValue('Output_limits_low', 'DAC0'))    # the limit is in volts
         limit_high = float(self.getValue('Output_limits_high', 'DAC0'))    # the limit is in volts
-        self.sl.set_dac_limits(0,
-                               int(limit_low/self.sl.dev.DAC_V_INT),
-                               int(limit_high/self.sl.dev.DAC_V_INT))
+        self.sll.dac.set_dac_limits(0, limit_low, limit_high)
         limit_low = float(self.getValue('Output_limits_low', 'DAC1'))    # the limit is in volts
         limit_high = float(self.getValue('Output_limits_high', 'DAC1'))    # the limit is in volts
-        self.sl.set_dac_limits(1,
-                               int(limit_low/self.sl.dev.DAC_V_INT),
-                               int(limit_high/self.sl.dev.DAC_V_INT))
+        self.sll.dac.set_dac_limits(1, limit_low, limit_high)
         limit_low = float(self.getValue('Output_limits_low', 'DAC2'))    # the limit is in volts
         limit_high = float(self.getValue('Output_limits_high', 'DAC2'))    # the limit is in volts
-        self.sl.set_dac_limits(2,
-                               int(limit_low/self.sl.dev.DAC_V_INT),
-                               int(limit_high/self.sl.dev.DAC_V_INT))
+        self.sll.dac.set_dac_limits(2, limit_low, limit_high)
         ##
         ## HB, 4/27/2015, Added PWM support on DOUT0
         ##
@@ -110,9 +103,9 @@ class SLLSystemParameters():
         PWM0_levels   = int(self.getValue('PWM0_settings', 'levels'));
         PWM0_default  = float(self.getValue('PWM0_settings', 'default'));
         # Convert to counts
-        value_in_counts = self.sl.convertPWMVoltsToCounts(PWM0_standard, PWM0_levels, PWM0_default)
+        value_in_counts = self.sll.dac.pwm_output_int(PWM0_standard, PWM0_levels, PWM0_default)
         # Send to FPGA
-        self.sl.set_pwm_settings(PWM0_levels, value_in_counts, bSendToFPGA)
+        self.sll.dac.set_pwm_settings(PWM0_levels, value_in_counts, bSendToFPGA)
 
 
 def main():

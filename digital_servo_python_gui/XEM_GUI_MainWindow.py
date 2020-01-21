@@ -1,9 +1,9 @@
+# -*- coding: utf-8 -*-
 """
 XEM6010 Phase-lock box GUI, displays diagnostics on the raw signal, phase noise measurements, and loop filters tuning
 by JD Deschenes, October 2013
 
 """
-from __future__ import print_function
 import time
 from PyQt5 import QtGui, Qt
 #import PyQt5.Qwt5 as Qwt
@@ -27,7 +27,7 @@ from DisplayDitherSettingsWindow import DisplayDitherSettingsWindow
 #from NIUSB_DAQ import Instrument
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 
-import SuperLaserLand_JD_RP
+from digital_servo import SuperLaserLand
 #import matplotlib.pyplot as plt
 
 import traceback
@@ -107,12 +107,12 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 #        self.output_controls = (True, True, True)
 #        self.initUI()
 
-    def __init__(self, sl, strTitle, selected_ADC, output_controls, sp, custom_style_sheet, strFGPASerialNumber):
-        assert isinstance(sl, SuperLaserLand_JD_RP.SuperLaserLand_JD_RP)
+    def __init__(self, sll, strTitle, selected_ADC, output_controls, sp, custom_style_sheet, strFGPASerialNumber):
+        assert isinstance(sll, SuperLaserLand)
 
         super(XEM_GUI_MainWindow, self).__init__()
         self.strTitle = strTitle
-        self.sl = sl
+        self.sll = sll
         self.sp = sp    # Holds the system parameters (configuration values)
         self.bDisplayTiming = False # Activate to turn a lot of timing print()s
         self.selected_ADC = selected_ADC
@@ -202,22 +202,21 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             if self.output_controls[k] == True:
                 # Slider units are the same as DAC counts
                 counts_offset = int(self.q_dac_offset[k].value())
-                self.sl.pll[k].set_manual_offset(counts_offset)
+                self.sll.loop_filter.set_manual_offset(k, counts_offset)
                 try:
                     VCO_gain_in_Hz_per_Volts = float(self.qedit_vco_gain[k].text())
                 except:
                     VCO_gain_in_Hz_per_Volts = 1e9
 
                 # Update the display:
-                current_output_in_volts = self.sl.dev.DAC_V_INT * counts_offset
+                current_output_in_volts = self.sll.dev.DAC_V_INT * counts_offset
                 current_output_in_hz = current_output_in_volts * VCO_gain_in_Hz_per_Volts
                 self.qlabel_dac_offset_value[k].setText('{:.4f} V\n{:.0f} MHz'.format(current_output_in_volts, current_output_in_hz/1e6))
 
     def getDACoffset(self):
         for k in range(3):
             if self.output_controls[k] == True:
-                self.sl.get_dac_limits(k)
-                counts_offset = self.sl.pll[k].get_manual_offset()
+                counts_offset = self.sll.loop_filter.get_manual_offset(k)
                 # Slider units are the same as DAC counts
                 q_dac_offset = counts_offset
 
@@ -231,7 +230,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                     VCO_gain_in_Hz_per_Volts = 1e9
 
                 # Update the display:
-                current_output_in_volts = self.sl.dev.DAC_V_INT * counts_offset
+                current_output_in_volts = self.sll.dev.DAC_V_INT * counts_offset
                 current_output_in_hz = current_output_in_volts * VCO_gain_in_Hz_per_Volts
                 self.qlabel_dac_offset_value[k].setText('{:.4f} V\n{:.0f} MHz'.format(current_output_in_volts, current_output_in_hz/1e6))
 
@@ -256,7 +255,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
                 # getFreqDiscriminatorGain is in DDC Counts/Hz
                 # getDACGainInVoltsPerCounts is in V/(DAC Counts)
-                VCO_gain_in_counts_per_counts = VCO_gain_in_Hz_per_Volts * self.sl.pll[k].getFreqDiscriminatorGain() * self.sl.dev.DAC_V_INT
+                #VCO_gain_in_counts_per_counts = VCO_gain_in_Hz_per_Volts * self.sll.dev.DAC_V_INT * self.sll.loop_filter[k].getFreqDiscriminatorGain()
+                VCO_gain_in_counts_per_counts = self.sll.loop_filter.open_loop_gain_parameter(k, VCO_gain_in_Hz_per_Volts)
 
                 # print('VCO_gain_in_counts_per_counts = %f' % VCO_gain_in_counts_per_counts)
                 if k == 0 or k == 1:
@@ -280,7 +280,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         for k in range(3):
             if self.output_controls[k]:
                 VCO_gain_in_counts_per_counts = self.qloop_filters[self.selected_ADC].kc # must be called after
-                VCO_gain_in_Hz_per_Volts = VCO_gain_in_counts_per_counts / (self.sl.pll[k].getFreqDiscriminatorGain() * self.sl.dev.DAC_V_INT)
+                #VCO_gain_in_Hz_per_Volts = VCO_gain_in_counts_per_counts / (self.sll.loop_filter[k].getFreqDiscriminatorGain() * self.sll.dev.DAC_V_INT)
+                VCO_gain_in_Hz_per_Volts = self.sll.loop_filter.open_loop_gain(k, VCO_gain_in_counts_per_counts)
 
                 self.qedit_vco_gain[k].blockSignals(True)
                 self.qedit_vco_gain[k].setText('{:.1e}'.format(VCO_gain_in_Hz_per_Volts))
@@ -301,17 +302,17 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
     def setSliderStep(self, k, VCO_gain_in_Hz_per_Volts):
         # Units for the slider are millionth of fullscale (goes from 0 to 1e6), which maps to [DAC_limit_low, DAC_limit_high]
         # The times three is because the scroll wheel actually does 3 small_steps (this is settings in Windows and can change from one computer to the next..)
-        small_step = int(1/3. * 50e3 / VCO_gain_in_Hz_per_Volts / self.sl.dev.DAC_V_INT)
-        large_step = int(500e3 / VCO_gain_in_Hz_per_Volts / self.sl.dev.DAC_V_INT)
+        small_step = int(1/3. * 50e3 / VCO_gain_in_Hz_per_Volts / self.sll.dev.DAC_V_INT)
+        large_step = int(500e3 / VCO_gain_in_Hz_per_Volts / self.sll.dev.DAC_V_INT)
 
         if small_step < 1:
             small_step = 1
-        if small_step > self.sl.dev.DAC_INT_HR/(3*100):
-            small_step = self.sl.dev.DAC_INT_HR/(3*100)
-        if large_step < self.sl.dev.DAC_INT_HR/(100):
-            large_step = self.sl.dev.DAC_INT_HR/(100)
-        if large_step > self.sl.dev.DAC_INT_HR/(10):
-            large_step = self.sl.dev.DAC_INT_HR/(10)
+        if small_step > self.sll.dev.DAC_INT_HR/(3*100):
+            small_step = self.sll.dev.DAC_INT_HR/(3*100)
+        if large_step < self.sll.dev.DAC_INT_HR/(100):
+            large_step = self.sll.dev.DAC_INT_HR/(100)
+        if large_step > self.sll.dev.DAC_INT_HR/(10):
+            large_step = self.sll.dev.DAC_INT_HR/(10)
 
         self.q_dac_offset[k].setSingleStep(small_step)
         self.q_dac_offset[k].setPageStep(large_step)
@@ -324,9 +325,9 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         # Convert to volts
         value_in_volts = slider_units*1e-6*(self.PWM0_max-self.PWM0_min)+self.PWM0_min
         # Convert to counts
-        value_in_counts = self.sl.convertPWMVoltsToCounts(self.PWM0_standard, self.PWM0_levels, value_in_volts)
+        value_in_counts = self.sll.dac.pwm_output_int(self.PWM0_standard, self.PWM0_levels, value_in_volts)
         # Send to FPGA
-        self.sl.set_pwm_settings(self.PWM0_levels, value_in_counts)
+        self.sll.dac.set_pwm_settings(self.PWM0_levels, value_in_counts)
         # Update label
         self.qlabel_pwm0_value.setText('%.2f V' % (value_in_volts))
 
@@ -336,15 +337,16 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         when we close the loop. This is taken care of on the FPGA.
         '''
         lf_sign = 1 if self.qsign_positive.isChecked() else -1
-        self.sl.pll[self.selected_ADC].set_lf_sign(lf_sign)
+        self.sll.loop_filter.set_lf_sign(self.selected_ADC, lf_sign)
 
     def get_LF_sign(self):
         '''If the VCO has positive sign, we need to put a negative reference
         frequency to make the total loop sign be negative so that it's stable
         when we close the loop. This is taken care of on the FPGA.
         '''
-        lf_sign = self.sl.pll[self.selected_ADC].get_lf_sign()
-        self.qsign_positive.setChecked(lf_sign)
+        lf_sign = self.sll.loop_filter.get_lf_sign(self.selected_ADC)
+        lf_positive = lf_sign > 0
+        self.qsign_positive.setChecked(lf_positive)
 
     def setVCOFreq_event(self):
         try:
@@ -353,16 +355,10 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             frequency_in_hz = 5e6
 
 #        print('frequency_in_hz = %e' % frequency_in_hz)
-        if self.selected_ADC == 0:
-            self.sl.set_ddc0_ref_freq(frequency_in_hz)
-        elif self.selected_ADC == 1:
-            self.sl.set_ddc1_ref_freq(frequency_in_hz)
+        self.sll.loop_filter.set_ddc_ref_freq(self.selected_ADC, frequency_in_hz)
 
     def getVCOFreq(self):
-        if self.selected_ADC == 0:
-            frequency_in_hz = self.sl.get_ddc0_ref_freq_from_RAM()
-        elif self.selected_ADC == 1:
-            frequency_in_hz = self.sl.get_ddc1_ref_freq_from_RAM()
+        frequency_in_hz = self.sll.loop_filter.get_ddc_ref_freq(self.selected_ADC)
 
         self.qedit_ref_freq.blockSignals(True)
         self.qedit_ref_freq.setText('%.2e' % abs(frequency_in_hz))
@@ -440,7 +436,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
     def showVNA(self):
-        self.vna = DisplayVNAWindow(self.sl)
+        self.vna = DisplayVNAWindow(self.sll)
 
 
 
@@ -449,7 +445,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         start_time = time.clock()
         print('Grabbing and exporting data')
         # Check if another function is currently using the DDR2 logger:
-        if self.sl.bDDR2InUse:
+        if self.sll.bDDR2InUse:
             print('grabAndExportData(): DDR2 logger in use, cannot get data from adc')
             return
 
@@ -467,7 +463,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             return
 
         # Block access to the DDR2 Logger to any other function until we are done:
-        self.sl.bDDR2InUse = True
+        self.sll.bDDR2InUse = True
 
 #        try:
 #            N_points = int(float(self.qedit_rawdata_length.text()))
@@ -487,11 +483,11 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 #        currentSelector = self.qcombo_adc_plot.currentIndex()
         # Python doesn't have switch-case statements
         # Apparently the best way is to use a dictionary instead:
-        setup_func_dict = {'ADC0': self.sl.setup_ADC0_write,
-                           'ADC1': self.sl.setup_ADC1_write,
-                           'DAC0': self.sl.setup_DAC0_write,
-                           'DAC1': self.sl.setup_DAC1_write,
-                           'DAC2': self.sl.setup_DAC2_write}
+        setup_func_dict = {'ADC0': self.sll.setup_ADC0_write,
+                           'ADC1': self.sll.setup_ADC1_write,
+                           'DAC0': self.sll.setup_DAC0_write,
+                           'DAC1': self.sll.setup_DAC1_write,
+                           'DAC2': self.sll.setup_DAC2_write}
 
 
         try:
@@ -511,19 +507,19 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
 
-            self.sl.trigger_write()
+            self.sll.trigger_write()
             print('time_now = %f, time_target = %f' % (time_now, time_target))
-            self.sl.wait_for_write()
-            (samples_out, ref_exp0) = self.sl.read_adc_samples_from_DDR2()
-            samples_out = samples_out.astype(dtype=np.float) * self.sl.dev.ADC_V_INT
+            self.sll.wait_for_write()
+            (samples_out, ref_exp0) = self.sll.read_adc_samples_from_DDR2()
+            samples_out = samples_out.astype(dtype=np.float) * self.sll.dev.ADC_V_INT
         except:
             # ADC read failed.
             print('Unhandled exception in ADC read')
-#            del self.sl
+#            del self.sll
 #            raise
 
         # Signal to other functions that they can use the DDR2 logger
-        self.sl.bDDR2InUse = False
+        self.sll.bDDR2InUse = False
 
         print('Elapsed time (Comm) = %f' % (time.clock()-start_time))
         start_time = time.clock()
@@ -545,11 +541,11 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         start_time = time.clock()
 
     def reset_front_end(self):
-        self.sl.reset_front_end()
+        self.sll.reset_front_end()
 
 
     def openDitherControls(self):
-        self.dither_settings = DisplayDitherSettingsWindow(self.sl)
+        self.dither_settings = DisplayDitherSettingsWindow(self.sll)
 
     def setLock(self):
         bLock = self.qloop_filters[self.selected_ADC].qchk_lock.isChecked()
@@ -566,7 +562,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             # we are doing an unlocked->locked transition.
 
             # We first check if the detected VCO gain seems right:
-            if self.sl.dither_enable[self.selected_ADC]:
+            if self.sll.dither_enable[self.selected_ADC]:
                 # check if gain is OK
                 try:
                     VCO_gain_in_Hz_per_Volts = float(self.qedit_vco_gain[self.selected_ADC].text())
@@ -604,17 +600,17 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             # If we get here that means either that all the parameters have passed the checks, or the dither was off.
             # Turn the dither off if the dither mode is automatic:
             if self.selected_ADC == 0:
-                if self.sl.dither_mode_auto[0] == 1:
+                if self.sll.dither_mode_auto[0] == 1:
                     # automatic mode
-                    self.sl.setDitherLockInState(0, False)
+                    self.sll.loop_filter.set_dither_state(0, False)
             else:
                 # Optical lock: we have two dithers to take care of:
-                if self.sl.dither_mode_auto[1] == 1:
+                if self.sll.dither_mode_auto[1] == 1:
                     # automatic mode
-                    self.sl.setDitherLockInState(1, False)
-                # if self.sl.dither_mode_auto[2] == 1:
+                    self.sll.loop_filter.set_dither_state(1, False)
+                # if self.sll.dither_mode_auto[2] == 1:
                 #     # automatic mode
-                #     self.sl.setDitherLockInState(2, False)
+                #     self.sll.loop_filter.set_dither_state(2, False)
 
 
             self.qchk_lock.setStyleSheet('font-size: 18pt; color: white; background-color: green')
@@ -649,7 +645,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
         else:   # bLock = False
-            if not self.sl.output_vco[self.selected_ADC]:
+            if not self.sll.output_vco[self.selected_ADC]:
                 # We are doing a locked->unlocked transition
                 # Turn the lock off
                 if self.selected_ADC == 0:
@@ -667,10 +663,10 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 if self.selected_ADC == 0:
                     # Go and measure the current DAC DC value:
                     N_points = 10e3
-                    self.sl.setup_DAC0_write(N_points)
-                    self.sl.trigger_write()
-                    self.sl.wait_for_write()
-                    samples_out = self.sl.read_dac_samples_from_DDR2()
+                    self.sll.setup_DAC0_write(N_points)
+                    self.sll.trigger_write()
+                    self.sll.wait_for_write()
+                    samples_out = self.sll.read_dac_samples_from_DDR2()
 #                    print(np.mean(samples_out))
                     current_dac_offset_in_counts = np.mean(samples_out)
                     kDAC = 0
@@ -678,10 +674,10 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
                 elif self.selected_ADC == 1:
                     N_points = 10e3
-                    self.sl.setup_DAC1_write(N_points)
-                    self.sl.trigger_write()
-                    self.sl.wait_for_write()
-                    samples_out = self.sl.read_dac_samples_from_DDR2()
+                    self.sll.setup_DAC1_write(N_points)
+                    self.sll.trigger_write()
+                    self.sll.wait_for_write()
+                    samples_out = self.sll.read_dac_samples_from_DDR2()
 #                    print(np.mean(samples_out))
                     current_dac_offset_in_counts = np.mean(samples_out)
                     kDAC = 1
@@ -716,17 +712,17 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
             # 3. Turn the dither on if the dither mode is automatic:
             if self.selected_ADC == 0:
-                if self.sl.dither_mode_auto[0] == 1:
+                if self.sll.dither_mode_auto[0] == 1:
                     # automatic mode
-                    self.sl.setDitherLockInState(0, True)
+                    self.sll.loop_filter.set_dither_state(0, True)
             else:
                 # Optical lock: we have two dithers to take care of:
-                if self.sl.dither_mode_auto[1] == 1:
+                if self.sll.dither_mode_auto[1] == 1:
                     # automatic mode
-                    self.sl.setDitherLockInState(1, True)
-                # if self.sl.dither_mode_auto[2] == 1:
+                    self.sll.loop_filter.set_dither_state(1, True)
+                # if self.sll.dither_mode_auto[2] == 1:
                 #     # automatic mode
-                #     self.sl.setDitherLockInState(2, True)
+                #     self.sll.loop_filter.set_dither_state(2, True)
 
             self.qchk_lock.setStyleSheet('font-size: 18pt; color: white; background-color: red')
 
@@ -1048,8 +1044,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
                 self.qthermo_dac_current[k] = ThermometerWidget()#Qwt.QwtThermo()
                 #self.qthermo_dac_current[k].setOrientation(Qt.Qt.Vertical, Qwt.QwtThermo.LeftScale)
-                self.qthermo_dac_current[k].setRange(self.sl.dev.DAC_V_INT * self.sl.DACs_limit_low[k], self.sl.dev.DAC_V_INT * self.sl.DACs_limit_high[k])
-                self.qthermo_dac_current[k].setScale(self.sl.dev.DAC_V_INT * self.sl.DACs_limit_low[k], self.sl.dev.DAC_V_INT * self.sl.DACs_limit_high[k])
+                self.qthermo_dac_current[k].setRange(self.sll.dev.DAC_V_INT * self.sll.DACs_limit_low[k], self.sll.dev.DAC_V_INT * self.sll.DACs_limit_high[k])
+                self.qthermo_dac_current[k].setScale(self.sll.dev.DAC_V_INT * self.sll.DACs_limit_low[k], self.sll.dev.DAC_V_INT * self.sll.DACs_limit_high[k])
                 self.qthermo_dac_current[k].setValue(0)
                 #self.qthermo_dac_current[k].setFillBrush(Qt.QBrush(Qt.QColor(0, 186, 52)))
                 self.qthermo_dac_current[k].setFillColor(Qt.QColor(0, 186, 52))
@@ -1068,8 +1064,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 self.q_dac_offset[k].setOrientation(Qt.Qt.Vertical)
 
                 # Units are the same as the full integer range of DAC values
-                self.q_dac_offset[k].setMinimum(-self.sl.dev.DAC_INT_HR)
-                self.q_dac_offset[k].setMaximum(self.sl.dev.DAC_INT_HR)
+                self.q_dac_offset[k].setMinimum(-self.sll.dev.DAC_INT_HR)
+                self.q_dac_offset[k].setMaximum(self.sll.dev.DAC_INT_HR)
 
 
                 self.qlabel_dac_current_value[k] = Qt.QLabel('0 V')
@@ -1241,14 +1237,14 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             if self.output_controls[k] == True:
                 if k == 0 or k == 1:
     #                print('XEM_GUI_MainWindow(): About to call LoopFiltersUI()')
-                    self.qloop_filters[k] = LoopFiltersUI(self.sl, k, bDisplayLockChkBox=False)
+                    self.qloop_filters[k] = LoopFiltersUI(self.sll, k, bDisplayLockChkBox=False)
 
 
                     hbox.addWidget(self.qloop_filters[k])
                     #self.qloop_filters[k].show()
 
                 # elif k == 1:
-                #     self.qloop_filters[k] = LoopFiltersUI_DAC1_and_DAC2(self.sl, k, self.sl.pll[k])
+                #     self.qloop_filters[k] = LoopFiltersUI_DAC1_and_DAC2(self.sll, k, self.sll.loop_filter[k])
                 #     hbox.addWidget(self.qloop_filters[k])
                 #     self.qloop_filters[k].show()
 
@@ -1468,7 +1464,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 output_offset_in_volts = float(self.sp.getValue('Output_offset_in_volts', strDAC))
 
                 # Scale this to the correct units for the output offset slider:
-                slider_units = output_offset_in_volts / self.sl.dev.DAC_V_INT
+                slider_units = output_offset_in_volts / self.sll.dev.DAC_V_INT
                 #print('calling dac offset slider setValue()')
                 self.q_dac_offset[k].blockSignals(True)
                 self.q_dac_offset[k].setValue(slider_units)
@@ -1511,8 +1507,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
     def initSL(self):
         # Old function to start the GUI communication
-#        self.sl = SuperLaserLand_JD2()
-#        self.sl.open()
+#        self.sll = SuperLaserLand_JD2()
+#        self.sll.open()
         print("initSL()")
 
         self.loadParameters()
@@ -1573,47 +1569,29 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
             #print("timerDitherEvent: self.qthermo_baseband_snr.sizeHint() = ", self.qthermo_baseband_snr.sizeHint())
 
-            # Check if the sl object exists: otherwise this timer will keep throwing exceptions, filling up the console messages
+            # Check if the sll object exists: otherwise this timer will keep throwing exceptions, filling up the console messages
             # and preventing us form seeing the real cause
-            if not hasattr(self, 'sl'):
-                print('SL object does not exist anymore. disabling timer in timerDitherEvent')
+            if not hasattr(self, 'sll'):
+                print('sll object does not exist anymore. disabling timer in timerDitherEvent')
                 self.timerIDDither.stop()
                 return
 
             start_time = time.clock()
             for k in range(3):
                 if self.output_controls[k]:
-                    if self.sl.dither_enable[k] == False:
+                    if self.sll.dither_enable[k] == False:
                         self.qlabel_detected_vco_gain[k].setText('off')
                         self.qlabel_detected_vco_gain[k].setStyleSheet("color: white; background-color: black")
 
                     else:
-                        samples = self.sl.ditherRead(2, k)
-                        # There is an implicit (-) sign because the DDC has to shift the frequency to 0.
-                        # This means that the detected gain will be positive when the VCO sign checkbox is correctly tuned
-                        samples = -samples
-                        samples = np.mean(samples)
-    #                    print('Dither output: %d' % np.real(samples))
-                        # np.mean() returns a numpy.float, but the conversions functions expect an ndarray
-        #                print(type(samples))
-                        samples = np.ndarray((1,), dtype=np.float, buffer=samples)
-        #                print(type(samples))
-
-        #                rep1 = self.sl.scaleDitherResultsToHz(np.real(samples), k)
-        #                rep2 = self.sl.scaleDitherResultsToHzPerVolts(np.imag(samples), k)
-        #                print('Real part = %f Hz' % self.sl.scaleDitherResultsToHz(np.real(samples[0]), k))
-        #                print('Real part = %f Hz/V' % self.sl.scaleDitherResultsToHzPerVolts(np.real(samples[0]), k))
-
-                        # TODO: fancier things with the real and imaginary part, to try to detect invalid readings?  Is this necessary?
-                        # TODO: Compare many different readings to try to sort out any incorrect ones?
-                        VCO_detected_gain_in_Hz_per_Volts = self.sl.scaleDitherResultsToHzPerVolts(samples, k)
-                        self.VCO_detected_gain_in_Hz_per_Volts[k] = VCO_detected_gain_in_Hz_per_Volts
-                        self.qlabel_detected_vco_gain[k].setText('%.1e' % VCO_detected_gain_in_Hz_per_Volts)
+                        open_loop_gain, gain_units = self.sll.loop_filter.read_dither_result(k)
+                        self.VCO_detected_gain_in_Hz_per_Volts[k] = open_loop_gain
+                        self.qlabel_detected_vco_gain[k].setText('{:.2e} {:}'.format(open_loop_gain, gain_units))
                         elapsed_time = time.clock() - start_time
         #                print('Elapsed time (timerDitherEvent) = %f ms' % (1000*elapsed_time))
 
                         # If the detected gain is negative, the loop will be unstable when closed, so we switch to a red background so that the user can flip the sign
-                        if VCO_detected_gain_in_Hz_per_Volts > 0:
+                        if open_loop_gain > 0:
     #                        self.qedit_fi.setStyleSheet("background-color: %s" % Qt.QColor(Qt.Qt.white).name())
                             self.qlabel_detected_vco_gain[k].setStyleSheet("color: white; background-color: green")
                         else:
@@ -1624,7 +1602,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
     def timerEvent(self, e):
         if self.isVisible():
             # Handle the LEDs display
-            (LED_G0, LED_R0, LED_G1, LED_R1, LED_G2, LED_R2) = self.sl.readLEDs()
+            (LED_G0, LED_R0, LED_G1, LED_R1, LED_G2, LED_R2) = self.sll.readLEDs()
             #print ('%d, %d, %d, %d, %d, %d' % (LED_G0, LED_R0, LED_G1, LED_R1, LED_G2, LED_R2))
             self.displayAnalyzer()
             self.displayDAC()
@@ -1643,11 +1621,11 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
     def displayDAC(self):
 
         # Check if another function is currently using the DDR2 logger:
-        if self.sl.bDDR2InUse:
+        if self.sll.bDDR2InUse:
             print('displayDAC(): DDR2 logger in use, cannot get data from dac')
             return
         # Block access to the DDR2 Logger to any other function until we are done:
-        self.sl.bDDR2InUse = True
+        self.sll.bDDR2InUse = True
 
         # For now: we grab the smallest chunk of points from the output (so as to not use too much time to refresh)
         # and display the current average:
@@ -1659,15 +1637,15 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 # For the USB bug, changed this from 64 to 256
                 N_points = 256   # I think that this is the smallest chunk we can read at a time with the current design of the DDR2 controller
                 if k == 0:
-                    self.sl.setup_DAC0_write(N_points)
+                    self.sll.setup_DAC0_write(N_points)
                 elif k == 1:
-                    self.sl.setup_DAC1_write(N_points)
+                    self.sll.setup_DAC1_write(N_points)
                 elif k == 2:
-                    self.sl.setup_DAC2_write(N_points)
+                    self.sll.setup_DAC2_write(N_points)
 
-                self.sl.trigger_write()
-                self.sl.wait_for_write()
-                samples_out = self.sl.read_dac_samples_from_DDR2()
+                self.sll.trigger_write()
+                self.sll.wait_for_write()
+                samples_out = self.sll.read_dac_samples_from_DDR2()
 
 
                 if k == 0 or k == 1:
@@ -1683,7 +1661,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
                 # Update the display:
                 # For the USB bug, compute the mean from the last points
-                current_output_in_volts = self.sl.dev.DAC_V_INT * np.mean(samples_out[128:256])
+                current_output_in_volts = self.sll.dev.DAC_V_INT * np.mean(samples_out[128:256])
                 current_output_in_hz = current_output_in_volts * VCO_gain_in_Hz_per_Volts
                 self.qthermo_dac_current[k].setValue(current_output_in_volts)
                 self.qlabel_dac_current_value[k].setText('{:.4f} V\n{:.2f} MHz'.format(current_output_in_volts, current_output_in_hz/1e6))
@@ -1693,16 +1671,16 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                     print('Elapsed time (displayDAC) = %f ms' % (1000*elapsed_time))
 
         # Signal to other functions that they can use the DDR2 logger
-        self.sl.bDDR2InUse = False
+        self.sll.bDDR2InUse = False
 
     def displayDDC(self):
 
         # Check if another function is currently using the DDR2 logger:
-        if self.sl.bDDR2InUse:
+        if self.sll.bDDR2InUse:
             print('displayDDC(): DDR2 logger in use, cannot get data from adc')
             return
         # Block access to the DDR2 Logger to any other function until we are done:
-        self.sl.bDDR2InUse = True
+        self.sll.bDDR2InUse = True
 
         # Read from DDC0
         try:
@@ -1714,15 +1692,15 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         start_time = time.clock()
         if self.selected_ADC == 0:
-            self.sl.setup_DDC0_write(N_points)
+            self.sll.setup_DDC0_write(N_points)
         elif self.selected_ADC == 1:
-            self.sl.setup_DDC1_write(N_points)
-        self.sl.trigger_write()
-        self.sl.wait_for_write()
+            self.sll.setup_DDC1_write(N_points)
+        self.sll.trigger_write()
+        self.sll.wait_for_write()
         if self.bDisplayTiming == True:
             print('Elapsed time (setup write) = %f' % (time.clock()-start_time))
         start_time = time.clock()
-        inst_freq = self.sl.read_ddc_samples_from_DDR2()
+        inst_freq = self.sll.read_ddc_samples_from_DDR2()
         self.inst_freq = inst_freq
 
         if self.bDisplayTiming == True:
@@ -1730,24 +1708,24 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
         # Signal to other functions that they can use the DDR2 logger
-        self.sl.bDDR2InUse = False
+        self.sll.bDDR2InUse = False
 
 
 
 #            self.qddc0_error_scale.setValue(np.mean(inst_freq)/1e6)
-#            print('mean freq error = %f MHz, raw code = %f' % (np.mean(inst_freq)/1e6, np.mean(inst_freq)*2**10 / self.sl.dev.ADC_CLK_Hz*4))
+#            print('mean freq error = %f MHz, raw code = %f' % (np.mean(inst_freq)/1e6, np.mean(inst_freq)*2**10 / self.sll.dev.ADC_CLK_Hz*4))
         self.qlbl_mean_freq_error.setText('Freq error: %.2f MHz' % (np.mean(inst_freq)/1e6))
 
         # Compute the spectrum:
         # We first perform decimation on the data since we don't have useful information above the cut-off frequency anyway:
         start_time = time.clock()
         N_decimation = 10
-        fs_new = self.sl.dev.ADC_CLK_Hz/N_decimation
+        fs_new = self.sll.dev.ADC_CLK_Hz/N_decimation
         inst_freq_decimated = decimate(inst_freq, N_decimation)
 #            inst_freq_decimated = decimate(inst_freq, N_decimation, zero_phase=False)
 
 #            inst_freq_decimated = inst_freq
-#            fs_new = self.sl.dev.ADC_CLK_Hz
+#            fs_new = self.sll.dev.ADC_CLK_Hz
 
         # For debugging: we want to check
 #            inst_freq_decimated = np.random.randn(100e3)
@@ -1857,7 +1835,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             phase_noise = 10*np.log10(spc + 1e-20) - 20*np.log10(frequency_axis)
 
             # Comput the time-domain standard deviation:
-            inst_phase = np.cumsum(inst_freq*2*np.pi/self.sl.dev.ADC_CLK_Hz)
+            inst_phase = np.cumsum(inst_freq*2*np.pi/self.sll.dev.ADC_CLK_Hz)
             phasenoise_stddev = np.std(inst_phase)
 
             # Display the cumulative integral of the phase noise:
@@ -1921,7 +1899,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         elif self.qcombo_ddc_plot.currentIndex() == 2:
             # Display the raw, time-domain instantaneous frequency output by the DDC block, mostly for debugging:
 
-            time_axis = np.arange(0, len(inst_freq))/self.sl.dev.ADC_CLK_Hz
+            time_axis = np.arange(0, len(inst_freq))/self.sll.dev.ADC_CLK_Hz
 
             freq_error_stddev = np.std(inst_freq)
             freq_error_mean = np.mean(inst_freq)
@@ -1932,7 +1910,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             self.qplt_DDC0_spc.setTitle('Instantaneous frequency error = {:.3g} Hz; stddev = {:.3g} Hz'.format(freq_error_mean, freq_error_stddev))
             self.qplt_DDC0_spc.setLabel('left', 'Freq [Hz]')
             self.qplt_DDC0_spc.setLabel('bottom', 'Time [s]')
-#                self.qplt_DDC0_spc.setAxisScale(Qwt.QwtPlot.yLeft, -self.sl.dev.ADC_CLK_Hz/2, self.sl.dev.ADC_CLK_Hz/2)
+#                self.qplt_DDC0_spc.setAxisScale(Qwt.QwtPlot.yLeft, -self.sll.dev.ADC_CLK_Hz/2, self.sll.dev.ADC_CLK_Hz/2)
             #self.qplt_DDC0_spc.setYRange(np.min(inst_freq), np.max(inst_freq))
             self.qplt_DDC0_spc.enableAutoRange(y=True)
             self.qplt_DDC0_spc.showGrid(y=False)
@@ -1946,8 +1924,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         elif self.qcombo_ddc_plot.currentIndex() == 3:
             # Display the time-domain instantaneous phase output by the DDC block (computed by integrating the frequency), mostly for debugging:
 
-            time_axis = np.arange(0, len(inst_freq))/self.sl.dev.ADC_CLK_Hz
-            inst_phase = np.cumsum(inst_freq*2*np.pi/self.sl.dev.ADC_CLK_Hz)
+            time_axis = np.arange(0, len(inst_freq))/self.sll.dev.ADC_CLK_Hz
+            inst_phase = np.cumsum(inst_freq*2*np.pi/self.sll.dev.ADC_CLK_Hz)
 
             # Compute the phase noise time-domain standard deviation:
             phasenoise_stddev = np.std(inst_phase)
@@ -1959,7 +1937,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             self.qplt_DDC0_spc.setTitle('Instantaneous phase error = {:.3g} rad; std dev = {:.3g} radrms'.format(phasenoise_mean, phasenoise_stddev))
             self.qplt_DDC0_spc.setLabel('left', 'Phase [rad]')
             self.qplt_DDC0_spc.setLabel('bottom', 'Time [s]')
-#                self.qplt_DDC0_spc.setAxisScale(Qwt.QwtPlot.yLeft, -self.sl.dev.ADC_CLK_Hz/2, self.sl.dev.ADC_CLK_Hz/2)
+#                self.qplt_DDC0_spc.setAxisScale(Qwt.QwtPlot.yLeft, -self.sll.dev.ADC_CLK_Hz/2, self.sll.dev.ADC_CLK_Hz/2)
             self.qplt_DDC0_spc.setYRange(np.min(inst_phase), np.max(inst_phase))
             #self.qplt_DDC0_spc.enableAutoRange(y=True)
             self.qplt_DDC0_spc.showGrid(y=False)
@@ -1970,7 +1948,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 #                print "debug warning: phase noise plot scaled to +/- pi"
 
 #            # Display the un-decimated spectrum:
-#            frequency_axis = np.linspace(0, (len(inst_freq)-1)/float(len(inst_freq))*(self.sl.dev.ADC_CLK_Hz), len(inst_freq))
+#            frequency_axis = np.linspace(0, (len(inst_freq)-1)/float(len(inst_freq))*(self.sll.dev.ADC_CLK_Hz), len(inst_freq))
 #            last_index_shown = np.round(len(frequency_axis)/2)
 #            window_function = np.blackman(len(inst_freq))
 #            spc = np.abs(np.fft.fft((inst_freq-np.mean(inst_freq)) * window_function))/(sum(window_function)/2)
@@ -1995,11 +1973,11 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         start_time = time.clock()
 
         # Check if another function is currently using the DDR2 logger:
-        if self.sl.bDDR2InUse:
+        if self.sll.bDDR2InUse:
             print('displayAnalyzer(): DDR2 logger in use, cannot get data from adc')
             return
         # Block access to the DDR2 Logger to any other function until we are done:
-        self.sl.bDDR2InUse = True
+        self.sll.bDDR2InUse = True
 
         try:
             N_points = self.oscp_points
@@ -2012,43 +1990,43 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         currentSelector = self.qcombo_adc_plot.currentIndex()
         # Python doesn't have switch-case statements
         # Apparently the best way is to use a dictionary instead:
-        setup_func_dict = {0: self.sl.setup_ADC0_write,
-                           1: self.sl.setup_ADC1_write,
-                           2: self.sl.setup_DAC0_write,
-                           3: self.sl.setup_DAC1_write,
-                           4: self.sl.setup_DAC2_write}
+        setup_func_dict = {0: self.sll.setup_ADC0_write,
+                           1: self.sll.setup_ADC1_write,
+                           2: self.sll.setup_DAC0_write,
+                           3: self.sll.setup_DAC1_write,
+                           4: self.sll.setup_DAC2_write}
 
 
         try:
             # Read from selected source
             setup_func_dict[currentSelector](N_points)
-            self.sl.trigger_write()
-            self.sl.wait_for_write()
+            self.sll.trigger_write()
+            self.sll.wait_for_write()
             if currentSelector==0 or currentSelector==1:
-                (samples_out_raw, ref_exp0) = self.sl.read_adc_samples_from_DDR2()
+                (samples_out_raw, ref_exp0) = self.sll.read_adc_samples_from_DDR2()
                 self.ref_exp0 = ref_exp0
                 self.raw_adc_samples = samples_out_raw
                 # Scale samples to Full Scale (FS)
-                samples_out = samples_out_raw.astype(dtype=np.float) / (self.sl.dev.ADC_INT_HR*2)
+                samples_out = samples_out_raw.astype(dtype=np.float) / (self.sll.dev.ADC_INT_HR*2)
                 # Scale samples to Volts
-                samples_out_v = samples_out_raw.astype(dtype=np.float) * self.sl.dev.ADC_V_INT
+                samples_out_v = samples_out_raw.astype(dtype=np.float) * self.sll.dev.ADC_V_INT
             else:
-                samples_out_raw = self.sl.read_dac_samples_from_DDR2()
+                samples_out_raw = self.sll.read_dac_samples_from_DDR2()
                 # Scale samples to Full Scale (FS)
-                samples_out = samples_out_raw.astype(dtype=np.float) / (self.sl.dev.DAC_INT_HR*2)
+                samples_out = samples_out_raw.astype(dtype=np.float) / (self.sll.dev.DAC_INT_HR*2)
                 # Scale samples to Volts
-                samples_out_v = samples_out_raw.astype(dtype=np.float) * self.sl.dev.DAC_V_INT
+                samples_out_v = samples_out_raw.astype(dtype=np.float) * self.sll.dev.DAC_V_INT
 
             max_abs = np.max(np.abs(samples_out_raw))
 
         except:
             # ADC read failed.
             print('Unhandled exception in ADC read')
-            del self.sl
+            del self.sll
             raise
 
         # Signal to other functions that they can use the DDR2 logger
-        self.sl.bDDR2InUse = False
+        self.sll.bDDR2InUse = False
 
         if self.bDisplayTiming == True:
             print('Elapsed time (Comm) = %f' % (time.clock()-start_time))
@@ -2056,10 +2034,10 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
         # Compute the window function used to display the spectrum:
         N_fft = 2**(int(np.ceil(np.log2(len(samples_out)))))
-        frequency_axis = np.linspace(0, (N_fft-1)/float(N_fft)*self.sl.dev.ADC_CLK_Hz, N_fft)
+        frequency_axis = np.linspace(0, (N_fft-1)/float(N_fft)*self.sll.dev.ADC_CLK_Hz, N_fft)
         window_function = np.blackman(len(samples_out))
         last_index_shown = int(np.round(len(frequency_axis)/2))
-        window_NEB = np.sum((window_function/np.sum(window_function))**2) * self.sl.dev.ADC_CLK_Hz
+        window_NEB = np.sum((window_function/np.sum(window_function))**2) * self.sll.dev.ADC_CLK_Hz
 
         # Show the RBW:
         if window_NEB > 1e6:
@@ -2118,7 +2096,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
         elif self.qcombo_adc_plottype.currentIndex() == 1:
             # Display time-domain plot instead
             # Convert from Full Scale to Voltage
-            time_axis = np.linspace(0, len(samples_out_v)-1, len(samples_out_v))/self.sl.dev.ADC_CLK_Hz
+            time_axis = np.linspace(0, len(samples_out_v)-1, len(samples_out_v))/self.sll.dev.ADC_CLK_Hz
 
             self.curve_spc.setData(time_axis, samples_out_v)
 #            self.qplt_spc.setAxisScale(Qwt.QwtPlot.yLeft, -120, 0)
@@ -2152,7 +2130,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
             # The signal is from ADC0 or ADC1
             N_max_IQ = 10e3 # Max number of points to display in the IQ graph
-            complex_baseband = self.sl.frontend_DDC_processing(self.raw_adc_samples, self.ref_exp0, self.selected_ADC)
+            complex_baseband = self.sll.frontend_DDC_processing(self.selected_ADC, self.raw_adc_samples, self.ref_exp0)
 
             if self.bDisplayTiming == True:
                 print('Elapsed time (Compute complex baseband) = %f' % (time.clock()-start_time))
@@ -2197,7 +2175,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 phi = np.unwrap(np.angle(complex_basebandr)) # returns radians
                 phi_std = np.std(phi)
                 # Set axis
-                time_axis = np.linspace(0, len(complex_baseband)-1, len(complex_baseband))/self.sl.dev.ADC_CLK_Hz
+                time_axis = np.linspace(0, len(complex_baseband)-1, len(complex_baseband))/self.sll.dev.ADC_CLK_Hz
 
                 self.curve_spc.setData(time_axis, phi-phi[0])
     #            self.qplt_spc.setAxisScale(Qwt.QwtPlot.yLeft, -120, 0)
@@ -2226,7 +2204,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 # To mimick as much as possible the processing done in the FPGA, we quantize the complex baseband:
                 complex_basebandr = np.round(complex_baseband)
                 # Set axis
-                time_axis = np.linspace(0, len(complex_basebandr)-1, len(complex_basebandr))/self.sl.dev.ADC_CLK_Hz
+                time_axis = np.linspace(0, len(complex_basebandr)-1, len(complex_basebandr))/self.sll.dev.ADC_CLK_Hz
 
 
                 self.curve_spc.setData(time_axis, np.real(complex_basebandr))
@@ -2255,7 +2233,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                 # Sync the phase to be equal to 0 at t=0:
                 complex_basebandr = complex_basebandr * np.conj(complex_basebandr[0])/np.abs(complex_basebandr[0])
                 # Set axis
-                time_axis = np.linspace(0, len(complex_basebandr)-1, len(complex_basebandr))/self.sl.dev.ADC_CLK_Hz
+                time_axis = np.linspace(0, len(complex_basebandr)-1, len(complex_basebandr))/self.sll.dev.ADC_CLK_Hz
 
                 self.curve_spc.setData(time_axis, np.real(complex_basebandr))
                 self.curve_filter.setData(time_axis, np.imag(complex_basebandr))
@@ -2292,8 +2270,8 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
             if self.qcombo_adc_plottype.currentIndex() == 0:
                 # Compute the spectrum of the filter:
-                spc_filter = self.sl.get_frontend_filter_response(frequency_axis, self.selected_ADC)
-#                spc_filter = np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/self.sl.dev.ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/self.sl.dev.ADC_CLK_Hz)
+                spc_filter = self.sll.get_frontend_filter_response(self.selected_ADC, frequency_axis)
+#                spc_filter = np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/self.sll.dev.ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/self.sll.dev.ADC_CLK_Hz)
 #                spc_filter = 20*np.log10(np.abs(spc_filter) + 1e-7)
                 # Update the graph
                 self.curve_filter.setData(frequency_axis[0:last_index_shown]/1e6, spc_filter[0:last_index_shown])
@@ -2310,7 +2288,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
                 # Decimate the signal since
                 N_decimation = 10
-                fs_new = self.sl.dev.ADC_CLK_Hz/N_decimation
+                fs_new = self.sll.dev.ADC_CLK_Hz/N_decimation
                 amplitude = decimate(amplitude, N_decimation)
 #                amplitude = decimate(amplitude, N_decimation, zero_phase=False)
 

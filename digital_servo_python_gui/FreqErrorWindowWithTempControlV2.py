@@ -3,7 +3,6 @@ XEM6010 Phase-lock box GUI, frequency counter display, interfaces to the dual-mo
 by JD Deschenes, October 2013
 
 """
-from __future__ import print_function
 
 import sys
 import time
@@ -27,17 +26,17 @@ import weakref
 
 # stuff for Python 3 port
 import pyqtgraph as pg
-import SuperLaserLand_JD_RP
+from digital_servo import SuperLaserLand
 
 class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
-    def __init__(self, sl, strTitle, sp, output_number=0, strNameTemplate='', custom_style_sheet='', port_number=0, xem_gui_mainwindow=0):
-        assert isinstance(sl, SuperLaserLand_JD_RP.SuperLaserLand_JD_RP)
+    def __init__(self, sll, strTitle, sp, output_number=0, strNameTemplate='', custom_style_sheet='', port_number=0, xem_gui_mainwindow=0):
+        assert isinstance(sll, SuperLaserLand)
         super(FreqErrorWindowWithTempControlV2, self).__init__()
 
         self.strTitle = strTitle
         self.strNameTemplate = strNameTemplate
-        self.sl = sl
+        self.sll = sll
         self.output_number = output_number
         self.setObjectName('MainWindow')
         self.setStyleSheet(custom_style_sheet)
@@ -50,9 +49,9 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
             self.xem_gui_mainwindow = None
 
         self.port_number = port_number
-        #print('before openTCPConnection')
-        self.openTCPConnection()
-        #print('after openTCPConnection')
+        #print('before open_TCP_connection')
+        self.open_TCP_connection()
+        #print('after open_TCP_connection')
         if self.client is None:
             print('Warning: no connection to temp control')
 
@@ -112,7 +111,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.killTimer(self.timerID)
 
 
-    def openTCPConnection(self):
+    def open_TCP_connection(self):
         start_time = time.clock()
         if self.port_number != 0:
             try:
@@ -123,20 +122,20 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 print('Connection to temp control established.')
             except:
                 time_after = time.clock()
-                print('openTCPConnection(): Time taken by AsyncSocketComms.AsyncSocketClient(): %f sec' % (time_after-time_before))
+                print('open_TCP_connection(): Time taken by AsyncSocketComms.AsyncSocketClient(): %f sec' % (time_after-time_before))
                 self.client = None
                 self.last_update = time.clock()
                 self.setpoint_change = 0.
         else:
             self.client = None
         end_time = time.clock()
-        print('openTCPConnection(): Time taken: %f sec' % (end_time-start_time))
+        print('open_TCP_connection(): Time taken: %f sec' % (end_time-start_time))
 
 
     def initBuffer(self):
 #        print('initBuffer')
-        self.gate_time_counter = self.sl.dev.COUNTER_GATE_TIME_N_CYCLES/self.sl.dev.ADC_CLK_Hz
-        self.gate_time_dacs = self.sl.dev.COUNTER_GATE_TIME_N_CYCLES/self.sl.dev.ADC_CLK_Hz/1
+        self.gate_time_counter = self.sll.dev.COUNTER_GATE_TIME_N_CYCLES/self.sll.dev.ADC_CLK_Hz
+        self.gate_time_dacs = self.sll.dev.COUNTER_GATE_TIME_N_CYCLES/self.sll.dev.ADC_CLK_Hz/1
         try:
             self.N_history_counters = int(round(float(self.qedit_history.text()) / self.gate_time_counter))
             self.N_history_dacs = int(round(float(self.qedit_history.text()) / self.gate_time_dacs))
@@ -180,16 +179,16 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
     def chkTriangular_checked(self):
         if self.qchk_triangular.isChecked():
-            self.sl.setCounterMode(True)
+            self.sll.setCounterMode(True)
         else:
-            self.sl.setCounterMode(False)
+            self.sll.setCounterMode(False)
         print('Updating counter mode')
 
     def getTriangular_checked(self):
-        self.bTriangularAveraging = self.sl.getCounterMode()
+        self.bTriangularAveraging = self.sll.getCounterMode()
 
         self.qchk_triangular.blockSignals(True)
-        self.qchk_triangular.setChecked(self.sl.bTriangularAveraging)
+        self.qchk_triangular.setChecked(self.sll.bTriangularAveraging)
         self.qchk_triangular.blockSignals(False)
 
     def initUI(self):
@@ -253,10 +252,10 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.qchk_triangular.clicked.connect(self.chkTriangular_checked)
 
         # Controls for the vertical scale of the frequency graph:
-        print(type(self.sl.dev.ADC_CLK_Hz))
-        print(self.sl.dev.ADC_CLK_Hz)
-        self.qedit_ymin = user_friendly_QLineEdit('%f' % (-self.sl.dev.ADC_CLK_Hz/4.))
-        self.qedit_ymax = user_friendly_QLineEdit('%f' % (self.sl.dev.ADC_CLK_Hz/4.))
+        print(type(self.sll.dev.ADC_CLK_Hz))
+        print(self.sll.dev.ADC_CLK_Hz)
+        self.qedit_ymin = user_friendly_QLineEdit('%f' % (-self.sll.dev.ADC_CLK_Hz/4.))
+        self.qedit_ymax = user_friendly_QLineEdit('%f' % (self.sll.dev.ADC_CLK_Hz/4.))
 
         # Controls for Auto Recovery
         self.qchk_autorecover = Qt.QCheckBox('Auto Recover')
@@ -373,7 +372,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
 #        print('timerEvent, timerID = %d' % self.timerID)
         self.qchk_triangular.blockSignals(True)
-        self.qchk_triangular.setChecked(self.sl.bTriangularAveraging)
+        self.qchk_triangular.setChecked(self.sll.bTriangularAveraging)
         self.qchk_triangular.blockSignals(False)
 
         self.displayFreqCounter()
@@ -475,7 +474,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
             else:   # self.client == None
                 # Try to open TCP connection to the temperature controller code
                 print('Trying to establish connection to the temperature controller')
-                self.openTCPConnection()
+                self.open_TCP_connection()
 #        else:
 #            print('Temp control disactivated.')
 
@@ -501,7 +500,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 rec_threshold = float(self.qedit_rec_thresh.text())
                 if np.abs(current_dac - dac_mean) > rec_threshold*dac_std:
                 # If the current DAC value is out of bounds, relock to the average
-                    self.sl.pll[output_number].set_manual_offset(int(dac_mean))
+                    self.sll.loop_filter.set_manual_offset(output_number, int(dac_mean))
                     self.xem_gui_mainwindow.qloop_filters[output_number].qchk_lock.setChecked(False)
                     self.xem_gui_mainwindow.qloop_filters[output_number].updateFilterSettings()
                     self.xem_gui_mainwindow.qloop_filters[output_number].qchk_lock.setChecked(True)
@@ -528,7 +527,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
     def displayFreqCounter(self):
         try:
-            (freq_counter_samples, time_axis, DAC0_output, DAC1_output, DAC2_output) = self.sl.read_dual_mode_counter(self.output_number)
+            (freq_counter_samples, time_axis, DAC0_output, DAC1_output, DAC2_output) = self.sll.read_dual_mode_counter(self.output_number)
             # print (freq_counter_samples, time_axis, DAC0_output, DAC1_output, DAC2_output)
 
         except:
@@ -554,9 +553,9 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 # Run auto recovery for DAC0
                     dac_mean, dac_thrsh = self.runAutoRecover(self.output_number, np.mean(DAC0_output))
                 # Convert to Volts
-                    dac_output = DAC0_output * self.sl.dev.DAC_V_INT
-                    dac_mean = dac_mean * self.sl.dev.DAC_V_INT
-                    dac_thrsh = dac_thrsh * self.sl.dev.DAC_V_INT
+                    dac_output = DAC0_output * self.sll.dev.DAC_V_INT
+                    dac_mean = dac_mean * self.sll.dev.DAC_V_INT
+                    dac_thrsh = dac_thrsh * self.sll.dev.DAC_V_INT
                 # Write data to disk:
                     self.file_output_dac0.write(np.array([dac_output]))
 
@@ -564,9 +563,9 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
                 if self.output_number == 1:
                 # Run auto recovery for DAC1
                     dac_mean, dac_thrsh = self.runAutoRecover(self.output_number, np.mean(DAC1_output))
-                    dac_output = DAC1_output * self.sl.dev.DAC_V_INT
-                    dac_mean = dac_mean * self.sl.dev.DAC_V_INT
-                    dac_thrsh = dac_thrsh * self.sl.dev.DAC_V_INT
+                    dac_output = DAC1_output * self.sll.dev.DAC_V_INT
+                    dac_mean = dac_mean * self.sll.dev.DAC_V_INT
+                    dac_thrsh = dac_thrsh * self.sll.dev.DAC_V_INT
                 # Write data to disk:
                     self.file_output_dac1.write(np.array([dac_output]))
 

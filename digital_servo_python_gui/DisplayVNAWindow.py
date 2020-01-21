@@ -3,7 +3,6 @@ XEM6010 Phase-lock box GUI, VNA (Vector Network Analyzer) controls
 by JD Deschenes, October 2013
 
 """
-from __future__ import print_function
 
 import time
 from PyQt5 import QtGui, Qt
@@ -14,7 +13,7 @@ import numpy as np
 #from SuperLaserLand_JD2 import SuperLaserLand_JD2
 from DisplayTransferFunctionWindow import DisplayTransferFunctionWindow
 import weakref
-import SuperLaserLand_JD_RP
+from digital_servo import SuperLaserLand
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 import sys # only used for sys.stdout.flush() because Syper's console sometimes doesn't show all print() outputs before crashing...
 
@@ -24,11 +23,11 @@ class DisplayVNAWindow(QtGui.QWidget):
 
     bStop = False   # This is set when the user presses the stop button, and is checked by the wait loop
 
-    def __init__(self, sl):
-        assert isinstance(sl, SuperLaserLand_JD_RP.SuperLaserLand_JD_RP)
+    def __init__(self, sll):
+        assert isinstance(sll, SuperLaserLand)
 
         super(DisplayVNAWindow, self).__init__()
-        self.sl = sl
+        self.sll = sll
         self.initUI()
 
     def getSystemIdentificationSettings(self):
@@ -45,15 +44,15 @@ class DisplayVNAWindow(QtGui.QWidget):
     def runSytemIdentification(self):
 
         # Check if another function is currently using the DDR2 logger:
-        if self.sl.bDDR2InUse:
+        if self.sll.bDDR2InUse:
             print('DDR2 logger in use, cannot run identification')
             return
         # Block access to the DDR2 Logger to any other function until we are done:
-        self.sl.bDDR2InUse = True
+        self.sll.bDDR2InUse = True
 
         # Reset the bStop flag (which is set when the user presses the stop button)
         self.bStop = False
-        # The dither will be stopped by sl.setup_system_identification()
+        # The dither will be stopped by sll.setup_system_identification()
         self.qbtn_dither.setChecked(False)
 
         # Reset the progress bar
@@ -61,8 +60,8 @@ class DisplayVNAWindow(QtGui.QWidget):
 
         (input_select, output_select, first_modulation_frequency_in_hz, last_modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude) = self.readSystemIdentificationSettings()
 
-        self.sl.setup_system_identification(input_select, output_select, first_modulation_frequency_in_hz, last_modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude)
-        total_wait_time = 0.1+1.3*self.sl.get_system_identification_wait_time()
+        self.sll.setup_system_identification(input_select, output_select, first_modulation_frequency_in_hz, last_modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude)
+        total_wait_time = 0.1+1.3*self.sll.get_system_identification_wait_time()
         print('Waiting for %f sec...\n' % total_wait_time)
 
         # If the wait time is to be > 1 minute, then give the chance to the user to cancel the action
@@ -71,11 +70,11 @@ class DisplayVNAWindow(QtGui.QWidget):
                 'Warning! The requested identification will take %.1f minute(s), are you sure you want to continue?' % (total_wait_time/60), QtGui.QMessageBox.Yes |
                 QtGui.QMessageBox.No, QtGui.QMessageBox.No)
             if reply == QtGui.QMessageBox.No:
-                self.sl.bDDR2InUse = False
+                self.sll.bDDR2InUse = False
                 return
 
 
-        self.sl.trigger_system_identification()
+        self.sll.trigger_system_identification()
 
 
         ## Wait until the transfer function measurement is finished, while updating the progress bar:
@@ -102,60 +101,54 @@ class DisplayVNAWindow(QtGui.QWidget):
 
         if self.bStop == True:
             # Operation was cancelled by user
-            self.sl.bDDR2InUse = False
+            self.sll.bDDR2InUse = False
             self.bStop = False
             self.qprogress_ident.setValue(0)
-            self.sl.setVNA_mode_register(0, 1, 0)
+            self.sll.setVNA_mode_register(0, 1, 0)
             return
 
         #print('runSytemIdentification(): before read')
         ## Read out the results from the FPGA:
         try:
-            (transfer_function_complex, frequency_axis) = self.sl.read_VNA_samples_from_DDR2()
+            (transfer_function_complex, frequency_axis) = self.sll.read_VNA_samples_from_DDR2()
             print('len(transfer_function_complex) = %d, len(frequency_axis) = %d' % (len(transfer_function_complex), len(frequency_axis)))
             print(np.real(transfer_function_complex))
             print(np.imag(transfer_function_complex))
         except:
-            self.sl.bDDR2InUse = False
+            self.sll.bDDR2InUse = False
             print("Exception reading VNA samples from DDR2")
             raise
 
         # Signal to other functions that they can use the DDR2 logger
-        self.sl.bDDR2InUse = False
+        self.sll.bDDR2InUse = False
 
         #print('runSytemIdentification(): after read')
 
         ## Scale the transfer function to physical units:
         # Current units are (VNA input counts)/(VNA output counts)
-        output_volts_per_counts = self.sl.dev.DAC_V_INT
+        output_volts_per_counts = self.sll.dev.DAC_V_INT
         print('output_volts_per_counts = %s' % output_volts_per_counts)
 
 
         if self.qcombo_transfer_input.currentIndex() == 0 or self.qcombo_transfer_input.currentIndex() == 1:
             # Input units to the VNA were ADC counts.
             # Transfer function units should be scaled to Volts/Volts, or no units:
-            volts_per_VNA_input_counts = self.sl.dev.ADC_V_INT
+            volts_per_VNA_input_counts = self.sll.dev.ADC_V_INT
             print('volts_per_VNA_input_counts = %s' % volts_per_VNA_input_counts)
             physical_input_units_per_input_counts = volts_per_VNA_input_counts
 
             physical_units_name = 'V/V'
 
         elif self.qcombo_transfer_input.currentIndex() == 2 or self.qcombo_transfer_input.currentIndex() == 3:
-            # Input units to the VNA were frequency counts
+            # Input units to the VNA were error signal
 
             if self.qcombo_transfer_input.currentIndex() == 2:
-                ddc_freq_for_compare = self.sl.ddc0_frequency_in_hz
+                ddc_freq_sign = self.sll.loop_filter.get_lf_sign(0)
             else:
-                ddc_freq_for_compare = self.sl.ddc1_frequency_in_hz
-            # we wanted to do sign() here but python has no sign function
-            if ddc_freq_for_compare >= 0.:
-                ddc_freq_sign = 1.
-            else:
-                ddc_freq_sign = -1.
+                ddc_freq_sign = self.sll.loop_filter.get_lf_sign(1)
 
-            # Dirty hack because convertDDCCountsToHz expects a numpy array and we only have a scalar to give it
-            Hz_per_VNA_input_counts = -ddc_freq_sign * self.sl.dev.DDC_FREQ_INT
-#            Hz_per_VNA_input_counts = self.sl.convertDDCCountsToHz(1)
+            Hz_per_VNA_input_counts = self.sll.loop_filter.ddc_freq(-ddc_freq_sign)
+#            Hz_per_VNA_input_counts = self.sll.convertDDCCountsToHz(1)
             print('Hz_per_VNA_input_counts = %s' % Hz_per_VNA_input_counts)
             physical_input_units_per_input_counts = Hz_per_VNA_input_counts
 
@@ -224,7 +217,7 @@ class DisplayVNAWindow(QtGui.QWidget):
             pass
 
         try:
-            output_amplitude = int(float(self.sl.DACs_limit_high[output_select] - self.sl.DACs_limit_low[output_select])*float(self.qedit_output_amplitude.text())/2)
+            output_amplitude = int(float(self.sll.DACs_limit_high[output_select] - self.sll.DACs_limit_low[output_select])*float(self.qedit_output_amplitude.text())/2)
             if output_select == 2:
                 # The DAC2 has a particularity in that the VNA outputs only a 16-bit number, and it is multiplied by 4 to fit the 20-bit range of DAC2.
                 output_amplitude = output_amplitude/4
@@ -257,7 +250,7 @@ class DisplayVNAWindow(QtGui.QWidget):
 
 
         try:
-            output_amplitude = int(float(self.sl.DACs_limit_high[output_select] - self.sl.DACs_limit_low[output_select])*float(self.qedit_dither_amplitude.text())/2)
+            output_amplitude = int(float(self.sll.DACs_limit_high[output_select] - self.sll.DACs_limit_low[output_select])*float(self.qedit_dither_amplitude.text())/2)
             if output_select == 2:
                 # The DAC2 has a particularity in that the VNA outputs only a 16-bit number, and it is multiplied by 4 to fit the 20-bit range of DAC2.
                 output_amplitude = output_amplitude/4
@@ -299,7 +292,7 @@ class DisplayVNAWindow(QtGui.QWidget):
         input_select = 0
         number_of_frequencies = 8
         System_settling_time = 1e-3
-        self.sl.setup_system_identification(input_select, output_select, modulation_frequency_in_hz, modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude)
+        self.sll.setup_system_identification(input_select, output_select, modulation_frequency_in_hz, modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude)
 
         print('(output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither) = %d, %f, %f, %d, %d' % (output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither))
 
@@ -311,14 +304,14 @@ class DisplayVNAWindow(QtGui.QWidget):
             stop_flag = 0
             self.qbtn_dither.setText("Stop dither")
         bSquareWave = bSquareWave
-        self.sl.setVNA_mode_register(trigger_dither, stop_flag, bSquareWave)
+        self.sll.setVNA_mode_register(trigger_dither, stop_flag, bSquareWave)
         print('(trigger_dither, stop_flag, bSquareWave) = %d, %d, %d' % (trigger_dither, stop_flag, bSquareWave))
         return
 
     def updateIntegrationTime(self):
         (input_select, output_select, first_modulation_frequency_in_hz, last_modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude) = self.readSystemIdentificationSettings()
-        integration_time_in_samples = self.sl.compute_integration_time_for_syst_ident(System_settling_time, first_modulation_frequency_in_hz)
-        self.qlbl_integration_time.setText('Integration time per freq [s]: %.1e' % (float(integration_time_in_samples)/self.sl.dev.ADC_CLK_Hz))
+        integration_time_in_samples = self.sll.compute_integration_time_for_syst_ident(System_settling_time, first_modulation_frequency_in_hz)
+        self.qlbl_integration_time.setText('Integration time per freq [s]: %.1e' % (float(integration_time_in_samples)/self.sll.dev.ADC_CLK_Hz))
 
 
     def initUI(self):

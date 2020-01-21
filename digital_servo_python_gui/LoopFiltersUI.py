@@ -5,7 +5,6 @@ Created on Wed Dec 04 20:48:43 2013
 Description: Provides a graphical user interface (GUI) for setting the loop filters parameters of the PII^2 filter implemented in the XEM6010 module.
 @author: JD Deschenes
 """
-from __future__ import print_function
 from PyQt5 import QtGui, Qt, QtCore
 #import PyQt5.Qwt5 as Qwt
 import numpy as np
@@ -33,7 +32,7 @@ class LoopFiltersUI(Qt.QWidget):
         self.kc = 1
         self.bDisplayLockChkBox = bDisplayLockChkBox
 
-        # # Was valid when we pass pll as a parameter (pll parameter was the same as self.pll)
+        # # Was valid when we pass pll as a parameter (pll parameter was the same as self.loop_filter)
         # if type(pll) == type(0):
         #     # For debugging only:
         #     self.kp_min = 1e-6
@@ -44,7 +43,7 @@ class LoopFiltersUI(Qt.QWidget):
         #     self.kii_max = 1e6
         # else:
         #     # Keep a local reference to the related PLL object
-        #     self.pll = pll
+        #     self.loop_filter = pll
         #     self.getLimits()
 
 
@@ -596,19 +595,19 @@ class LoopFiltersUI(Qt.QWidget):
 
     def getLimits(self):
 
-        (kp_min, kp_max) = self.sl.pll[self.filter_number].p_limits
+        (kp_min, kp_max) = self.sl.loop_filter.p_limits(self.filter_number)
         self.kp_min = kp_min
         self.kp_max = kp_max
-        (ki_min, ki_max) = self.sl.pll[self.filter_number].i_limits
+        (ki_min, ki_max) = self.sl.loop_filter.i_limits(self.filter_number)
         self.ki_min = ki_min
         self.ki_max = ki_max
-        (kii_min, kii_max) = self.sl.pll[self.filter_number].ii_limits
+        (kii_min, kii_max) = self.sl.loop_filter.ii_limits(self.filter_number)
         self.kii_min = kii_min
         self.kii_max = kii_max
-        (kd_min, kd_max) = self.sl.pll[self.filter_number].d_limits
+        (kd_min, kd_max) = self.sl.loop_filter.d_limits(self.filter_number)
         self.kd_min = kd_min
         self.kd_max = kd_max
-        (kdf_min, kdf_max) = self.sl.pll[self.filter_number].df_limits
+        (kdf_min, kdf_max) = self.sl.loop_filter.df_limits(self.filter_number)
         self.kdf_min = kdf_min
         self.kdf_max = kdf_max
 
@@ -697,13 +696,13 @@ class LoopFiltersUI(Qt.QWidget):
 
         (P_gain, I_gain, II_gain, D_gain, D_coef, bLock) = self.getActualControllerDesign()
 
-        self.sl.pll[self.filter_number].set_pll_settings(P_gain, I_gain, II_gain, D_gain, D_coef, bLock, self.kc)
+        self.sl.loop_filter.set_pll_settings(self.filter_number, P_gain, I_gain, II_gain, D_gain, D_coef, bLock, self.kc)
 
 #        print('LoopFiltersUI::updateFilterSettings(): Exiting')
 
     def getFilterSettings(self):
 
-        (P_gain, I_gain, II_gain, D_gain, D_coef, bLock, OL_gain) = self.sl.pll[self.filter_number].get_pll_settings()
+        (P_gain, I_gain, II_gain, D_gain, D_coef, bLock, OL_gain) = self.sl.loop_filter.get_pll_settings(self.filter_number)
 
         # print("P_gain %f" % P_gain)
         # print("I_gain %f" % I_gain)
@@ -926,7 +925,7 @@ class LoopFiltersUI(Qt.QWidget):
 
 
         f_array = np.logspace(np.log10(fmin), np.log10(fmax), 1000)
-        actual_gain_array = np.abs(self.sl.pll[self.filter_number].get_current_transfer_function(f_array, self.sl.dev.ADC_CLK_Hz) * self.kc)
+        actual_gain_array = np.abs(self.sl.loop_filter.get_current_transfer_function(self.filter_number, f_array, self.sl.dev.ADC_CLK_Hz) * self.kc)
         self.curve_actual.setData(f_array, 20*np.log10(actual_gain_array + self.MINIMUM_GAIN_DISPLAY))
 
         # print('LoopFiltersUI: setting X range: %f, %f' % (fmin, fmax))

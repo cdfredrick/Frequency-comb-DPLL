@@ -1,2 +1,4 @@
 Firmware
 digital_servo_python_gui/\.spyproject/
+
+digital_servo_python_gui/.pylint.d/

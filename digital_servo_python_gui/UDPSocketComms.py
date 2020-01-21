@@ -4,7 +4,6 @@ Created on Thu Dec 17 17:54:31 2015
 
 @author: JD
 """
-from __future__ import print_function
 
 
 import socket

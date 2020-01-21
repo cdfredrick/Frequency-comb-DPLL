@@ -3,20 +3,21 @@ XEM6010 Phase-lock box GUI, Settings controls for the programmable clock divider
 by JD Deschenes, October 2013
 
 """
-from __future__ import print_function
 
 import time
 from PyQt5 import QtGui, Qt
 import numpy as np
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 import weakref
-#from SuperLaserLand_JD2 import SuperLaserLand_JD2
+from digital_servo import SuperLaserLand
 #from DisplayTransferFunctionWindow import DisplayTransferFunctionWindow
 
 
 class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
 
-    def __init__(self, sl, sp, clk_divider_modulus=67e3, bDividerOn=0, bPulses=0, custom_style_sheet='', custom_shorthand=''):
+    def __init__(self, sll, sp, clk_divider_modulus=67e3, bDividerOn=0, bPulses=0, custom_style_sheet='', custom_shorthand=''):
+        assert isinstance(sll, SuperLaserLand)
+
         super(DisplayDividerAndResidualsStreamingSettingsWindow, self).__init__()
 
         self.clk_divider_modulus = clk_divider_modulus
@@ -24,12 +25,12 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
         self.bPulses = bPulses
 
         self.sp = sp
-        self.sl = weakref.proxy(sl)
+        self.sll = weakref.proxy(sll)
         self.setObjectName('MainWindow')
         self.setStyleSheet(custom_style_sheet)
         self.custom_shorthand = custom_shorthand
 
-#        sl.set_clk_divider_settings(bOn=1, bPulses=0, modulus=67e3+1-1)
+#        sll.set_clk_divider_settings(bOn=1, bPulses=0, modulus=67e3+1-1)
 
         self.initUI()
 
@@ -98,7 +99,7 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
 
     def getValues(self):
         #Get filter_select(0, 1 or 2) for both adc
-        (filter_select_1, filter_select_0) = self.sl.get_ddc_filter_select()
+        (filter_select_1, filter_select_0) = self.sll.loop_filter.get_ddc_filter_select()
         #Check correspoding radio button
         if filter_select_1 == 0:
             self.qchk_Wideband1.setChecked(True)
@@ -115,7 +116,7 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
             self.qchk_WidebandFIR0.setChecked(True)
 
         #Get angle_select (0, 1, 2, 3 or 4) for both adc
-        (angle_select_1, angle_select_0) = self.sl.get_ddc_angle_select()
+        (angle_select_1, angle_select_0) = self.sll.loop_filter.get_ddc_angle_select()
         #Check correspoding radio button
         if angle_select_1 == 0:
             self.qchk_cordic1.setChecked(True)
@@ -144,15 +145,15 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
         # Read user-entered settings:
         (clk_divider_modulus, bDividerOn, bPulses) = self.readSettings()
         if bPulses:
-            output_freq = 2*self.sl.dev.ADC_CLK_Hz/(clk_divider_modulus)
+            output_freq = 2*self.sll.dev.ADC_CLK_Hz/(clk_divider_modulus)
         else:
             # square wave mode:
-            output_freq = 2*self.sl.dev.ADC_CLK_Hz/(2*(clk_divider_modulus))
+            output_freq = 2*self.sll.dev.ADC_CLK_Hz/(2*(clk_divider_modulus))
 
         # Update display:
         self.qlbl_actual_frequency.setText('%f' % output_freq)
 
-        self.sl.set_clk_divider_settings(bDividerOn, bPulses, clk_divider_modulus-1)
+        self.sll.set_clk_divider_settings(bDividerOn, bPulses, clk_divider_modulus-1)
 
 
     def readSettings(self):
@@ -207,21 +208,21 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
     def residualsClicked(self):
 #        (data_delay, trigger_delay, boxcar_filter_size) = self.readStreamingSettings()
         rst_residuals_streaming = 0
-#        self.sl.setResidualsStreamingSettings(data_delay, trigger_delay, boxcar_filter_size, rst_residuals_streaming)
+#        self.sll.setResidualsStreamingSettings(data_delay, trigger_delay, boxcar_filter_size, rst_residuals_streaming)
 
         adc_number = 0
         phase_or_freq = int(self.qchk_Modulo0.isChecked())
-        self.sl.set_residuals_phase_or_freq(adc_number, phase_or_freq)
+        self.sll.set_residuals_phase_or_freq(adc_number, phase_or_freq)
 
         adc_number = 1
         phase_or_freq = int(self.qchk_Modulo1.isChecked())
-        self.sl.set_residuals_phase_or_freq(adc_number, phase_or_freq)
+        self.sll.set_residuals_phase_or_freq(adc_number, phase_or_freq)
 
 
     def ddcClicked(self):
 #        (data_delay, trigger_delay, boxcar_filter_size) = self.readStreamingSettings()  # Default (1,1,2)
         rst_residuals_streaming = 0
-#        self.sl.setResidualsStreamingSettings(data_delay, trigger_delay, boxcar_filter_size, rst_residuals_streaming)   # Default (1,1,2,0)
+#        self.sll.setResidualsStreamingSettings(data_delay, trigger_delay, boxcar_filter_size, rst_residuals_streaming)   # Default (1,1,2,0)
 
         adc_number = 0
         if self.qchk_Wideband0.isChecked():
@@ -241,7 +242,7 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
             angle_select = 3
         elif self.qchk_inphase_lsb0.isChecked():
             angle_select = 4
-        self.sl.set_ddc_filter(adc_number, filter_select, angle_select)
+        self.sll.loop_filter.set_ddc_filter(adc_number, filter_select, angle_select)
 
 
         adc_number = 1
@@ -262,13 +263,13 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
             angle_select = 3
         elif self.qchk_inphase_lsb1.isChecked():
             angle_select = 4
-        self.sl.set_ddc_filter(adc_number, filter_select, angle_select)
+        self.sll.loop_filter.set_ddc_filter(adc_number, filter_select, angle_select)
 
 
     def phaseIncrement(self):
         try:
             phase_increment = float(self.qedit_phaseinc.text())
-            phase_increment = int(round(2*self.sl.dev.ADC_CLK_Hz * phase_increment))    # converts from time units to samples
+            phase_increment = int(round(2*self.sll.dev.ADC_CLK_Hz * phase_increment))    # converts from time units to samples
 
             # We need to know the counter modulus so we can convert negative offsets into positive offsets through a modulo operation
             (clk_divider_modulus, bDividerOn, bPulses) = self.readSettings()
@@ -278,7 +279,7 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
                 phase_increment = phase_increment % clk_divider_actual_modulus
                 print('phase increment')
                 print(phase_increment)
-                self.sl.adjust_clk_divider_phase(phase_increment)
+                self.sll.adjust_clk_divider_phase(phase_increment)
             else:
                 # square wave mode:
                 # This case is a little bit weird because the counter actually counts half-cycles, so we have to offset the time by steps:
@@ -289,17 +290,17 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
 
                 if float(self.qedit_phaseinc.text()) < 0:
                     # This puts the correct offset, but also flips the phase
-                    self.sl.adjust_clk_divider_phase(phase_increment)
-                    time.sleep(50e-3 + 10*clk_divider_actual_modulus/(2*self.sl.dev.ADC_CLK_Hz))
+                    self.sll.adjust_clk_divider_phase(phase_increment)
+                    time.sleep(50e-3 + 10*clk_divider_actual_modulus/(2*self.sll.dev.ADC_CLK_Hz))
                     # These two extra steps are to adjust the phase:
                     first_step = int(round(clk_divider_modulus/2))
                     second_step = int(clk_divider_modulus-first_step)
-                    self.sl.adjust_clk_divider_phase(first_step)
-                    time.sleep(50e-3 + 10*clk_divider_actual_modulus/(2*self.sl.dev.ADC_CLK_Hz))
-                    self.sl.adjust_clk_divider_phase(second_step)
+                    self.sll.adjust_clk_divider_phase(first_step)
+                    time.sleep(50e-3 + 10*clk_divider_actual_modulus/(2*self.sll.dev.ADC_CLK_Hz))
+                    self.sll.adjust_clk_divider_phase(second_step)
                 else:
                     # This case is easier:
-                    self.sl.adjust_clk_divider_phase(phase_increment)
+                    self.sll.adjust_clk_divider_phase(phase_increment)
 
 
 
@@ -321,10 +322,10 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
         self.qgroupbox_divider.setAutoFillBackground(True)
 
         if self.bPulses:
-            output_freq = 2*self.sl.dev.ADC_CLK_Hz/(self.clk_divider_modulus)
+            output_freq = 2*self.sll.dev.ADC_CLK_Hz/(self.clk_divider_modulus)
         else:
             # square wave mode:
-            output_freq = 2*self.sl.dev.ADC_CLK_Hz/(2*(self.clk_divider_modulus))
+            output_freq = 2*self.sll.dev.ADC_CLK_Hz/(2*(self.clk_divider_modulus))
 
 
         self.qlbl_modulus = Qt.QLabel('Modulus [2, 2^32-1], [samples at 200 MHz]:')
@@ -390,10 +391,10 @@ class DisplayDividerAndResidualsStreamingSettingsWindow(QtGui.QWidget):
         self.qgroupbox_streaming.setAutoFillBackground(True)
 
         if self.bPulses:
-            output_freq = 2*self.sl.dev.ADC_CLK_Hz/(self.clk_divider_modulus)
+            output_freq = 2*self.sll.dev.ADC_CLK_Hz/(self.clk_divider_modulus)
         else:
             # square wave mode:
-            output_freq = 2*self.sl.dev.ADC_CLK_Hz/(2*(self.clk_divider_modulus))
+            output_freq = 2*self.sll.dev.ADC_CLK_Hz/(2*(self.clk_divider_modulus))
 
 
         self.qlbl_data_delay = Qt.QLabel('Data delay, [samples at 100 MHz]:')

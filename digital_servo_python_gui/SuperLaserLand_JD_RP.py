@@ -5,25 +5,17 @@ by JD Deschenes, October 2013
 Modified January 2016 to interface with the Red Pitaya port of the phase-lock box
 
 """
-from __future__ import print_function
 
-# import ok       # used to talk to the FPGA board
 import time     # used for time.sleep()
 import numpy as np
 from scipy.signal import lfilter
 
 import os
 
-from SuperLaserLand2_JD2_PLL import Loop_filters_module
-import RP_PLL
+import digital_servo
 
 class SuperLaserLand_JD_RP:
-    ###########################################################################
-    #--- Class Initialization
-    ###########################################################################
-    #
-
-    def __init__(self, controller):
+    def __init__(self):
         #----------------------------------------------------------------------
         # Communications Logging
         #
@@ -39,14 +31,13 @@ class SuperLaserLand_JD_RP:
         # Device Communications:
         #
 
-        self.controller = controller
-        self.dev = RP_PLL.RP_PLL_device(self.controller)
+        self.dev = digital_servo.RedPitayaDevice()
 
         #----------------------------------------------------------------------
         # Sub-Module Initialization:
         #
 
-        self.pll = [Loop_filters_module(self.dev, channel) for channel in range(3)]
+        self.loop_filter = [digital_servo.LoopFilter(self.dev, channel) for channel in range(3)]
 
         #----------------------------------------------------------------------
         # System Parameters:
@@ -181,7 +172,7 @@ class SuperLaserLand_JD_RP:
         '''
         if self.bVerbose == True:
             print('DDC_frequency')
-        return ddc_frequency_int * self.dev.DDC_FREQ_INT
+        return ddc_frequency_int * self.dev.DDC_FREQ_HZ_INT
 
     def frontend_DDC_processing(self, samples, ref_exp0, input_number):
         if self.bVerbose == True:
@@ -397,7 +388,7 @@ class SuperLaserLand_JD_RP:
     ###########################################################################
     #--- Loop Filters:
     ###########################################################################
-    # contained within self.pll[*]
+    # contained within self.loop_filter[*]
     #
 
     ###########################################################################
@@ -443,21 +434,21 @@ class SuperLaserLand_JD_RP:
         # self.dither_enable[dac_number] = int(bEnable)
         self.dither_mode_auto[dac_number] = int(mode_auto)
 
-        self.setDitherLockInSettings(dac_number)
+        self.set_dither_lock_in_parameters(dac_number)
 
     #--------------------------------------------------------------------------
     # Read/Write Dither and Lock-In Parameters:
     #
 
-    def setDitherLockInState(self, dac_number, bEnable):
+    def set_dither_state(self, dac_number, bEnable):
         if self.bVerbose == True:
-            print('setDitherLockInState')
+            print('set_dither_state')
         self.dither_enable[dac_number] = int(bEnable)
-        self.setDitherLockInSettings(dac_number)
+        self.set_dither_lock_in_parameters(dac_number)
 
-    def setDitherLockInSettings(self, dac_number):
+    def set_dither_lock_in_parameters(self, dac_number):
         if self.bVerbose == True:
-            print('setDitherLockInSettings')
+            print('set_dither_lock_in_parameters')
         # Dither Modulation Period
         self.dev.write_Zynq_register_uint32(
                 self.dev.dpll_write_address(self.dev.BUS_ADDR_dither_period_divided_by_4_minus_one[dac_number]),
@@ -479,7 +470,7 @@ class SuperLaserLand_JD_RP:
                 self.dev.dpll_write_address(self.dev.BUS_ADDR_dither_mode_auto[dac_number]),
                 self.dither_mode_auto[dac_number])
 
-    def get_Dither_Settings(self, dac_number):
+    def get_dither_settings(self, dac_number):
         # Dither Modulation Period
         self.modulation_period_divided_by_4_minus_one[dac_number] = self.dev.read_Zynq_register_uint32(
                 self.dev.dpll_read_address(self.dev.BUS_ADDR_dither_period_divided_by_4_minus_one[dac_number]))
@@ -503,9 +494,9 @@ class SuperLaserLand_JD_RP:
 
         return (modulation_period, N_periods, amplitude, self.dither_enable[dac_number], self.dither_mode_auto[dac_number])
 
-    def ditherRead(self, N_samples, dac_number=0):
+    def read_dither_result(self, N_samples, dac_number=0):
         if self.bVerbose == True:
-            print('ditherRead')
+            print('read_dither_result')
 
         # Read N samples from the dither lock-in
         samples = np.zeros(N_samples, dtype=np.complexfloating)
@@ -520,7 +511,7 @@ class SuperLaserLand_JD_RP:
             # there is no DAC2 anymore
             return samples
 
-        # print 'ditherRead------------'
+        # print 'read_dither_result------------'
         for k in range(N_samples):
             samples[k] = self.dev.read_Zynq_register_int64(
                     self.dev.dpll_write_address(BASE_ADDR_REAL_LSB), # use the write address for legacy "Opal Kelly" I/O
@@ -963,7 +954,7 @@ class SuperLaserLand_JD_RP:
 
         # Select which data bus to put in the RAM:
         self.last_selector = selector
-        self.dev.SetWireInValue(self.dev.BUS_ADDR_MUX_SELECTORS, self.last_selector)
+        self.dev.set_wire_in_value(self.dev.BUS_ADDR_MUX_SELECTORS, self.last_selector)
 
 
     def setup_ADC0_write(self, Num_samples):
@@ -1113,7 +1104,7 @@ class SuperLaserLand_JD_RP:
         data_buffer = self.read_raw_bytes_from_DDR2()
         samples_out = np.frombuffer(data_buffer, dtype=np.int16)
         # The samples represent instantaneous frequency as: samples_out = diff(phi)/(2*pi*fs) * 2**12, where phi is the phase in radians
-        inst_freq = (samples_out.astype(dtype=float)) * self.dev.DDC_FREQ_INT
+        inst_freq = (samples_out.astype(dtype=float)) * self.dev.DDC_FREQ_HZ_INT
         # print('Mean frequency error = %f Hz' % np.mean(inst_freq))
         return inst_freq
 
@@ -1234,7 +1225,7 @@ class SuperLaserLand_JD_RP:
             print('readLEDs')
 
         # We first need to check if the fifo has enough samples to send us:
-        # status_flags = self.dev.GetWireOutValue(self.ENDPOINT_STATUS_FLAGS_OUT) # get value from dev object into our script
+        # status_flags = self.dev.get_wire_out_value(self.ENDPOINT_STATUS_FLAGS_OUT) # get value from dev object into our script
         status_flags = self.dev.read_Zynq_register_uint32(
                 self.dev.dpll_write_address(self.dev.BUS_ADDR_STATUS_FLAGS)) # use write address, legacy "Opal Kelly" I/O
         # print(status_flags)
@@ -1256,7 +1247,7 @@ class SuperLaserLand_JD_RP:
 
         # We first need to check if the fifo has enough samples to send us:
 
-        # status_flags = self.dev.GetWireOutValue(self.ENDPOINT_STATUS_FLAGS_OUT) # get value from dev object into our script
+        # status_flags = self.dev.get_wire_out_value(self.ENDPOINT_STATUS_FLAGS_OUT) # get value from dev object into our script
         status_flags = self.dev.read_Zynq_register_uint32(
                 self.dev.dpll_write_address(self.dev.BUS_ADDR_STATUS_FLAGS)) # use write address, legacy "Opal Kelly" I/O
 #        print(status_flags)

@@ -4,23 +4,19 @@ Created on Fri Aug 26 00:26:50 2016
 
 @author: JD
 """
-from __future__ import print_function
 
 import sys
-from PyQt5 import QtGui, Qt
-#import numpy as np
-import UDPRedPitayaDiscovery
-
 import time
+
+from PyQt5 import QtGui, Qt
+
+import UDPRedPitayaDiscovery
 from user_friendly_QLineEdit import user_friendly_QLineEdit
-from RP_PLL import RP_PLL_device # needed to update FPGA firmware and CPU (Zynq) software
-import socket
+
 
 class initialConfiguration(QtGui.QDialog):
 
-
-
-    def __init__(self, dev, controller, devices_data={}, strBroadcastAddress="192.168.2.255", strFPGAFirmware='', strCPUFirmware=''):
+    def __init__(self, dev, controller, devices_data={}, strBroadcastAddress="192.168.0.255", strFPGAFirmware='', strCPUFirmware=''):
         super(initialConfiguration, self).__init__()
 
         # copy init parameters to member variables
@@ -297,7 +293,7 @@ class initialConfiguration(QtGui.QDialog):
             self.readSelectedFPGA()
             if not self.strSelectedIP:
                 return
-            #self.dev.OpenTCPConnection(self.strSelectedIP)
+            #self.dev.open_TCP_connection(self.strSelectedIP)
             #print("About to connect")
             self.controller.pushDefaultValues(self.strSelectedSerial, self.strSelectedIP)
 
@@ -336,15 +332,14 @@ class initialConfiguration(QtGui.QDialog):
             return
 
         # connect to the selected RedPitaya, send new bitfile, then send programming command to the shell:
-        self.dev.OpenTCPConnection(self.strSelectedIP)
+        self.dev.open_TCP_connection(self.strSelectedIP)
         self.dev.write_file_on_remote(strFilenameLocal=str(self.qedit_firmware.text()), strFilenameRemote='/opt/red_pitaya_top.bit')
         print("File written to remote host at /opt/red_pitaya_top.bit.")
         self.dev.send_shell_command('cat /opt/red_pitaya_top.bit > /dev/xdevcfg')
         print("Program FPGA firmware command sent.")
 
         # disconnect:
-        self.dev.sock.shutdown(socket.SHUT_RDWR)
-        self.dev.sock.close()
+        self.dev.close_TCP_connection()
         print("Disconnected from remote host.  You can now reconnect to the updated host.")
 
 
@@ -355,7 +350,7 @@ class initialConfiguration(QtGui.QDialog):
             return
 
         # connect to the selected RedPitaya
-        self.dev.OpenTCPConnection(self.strSelectedIP)
+        self.dev.open_TCP_connection(self.strSelectedIP)
         # send new monitor-tcp version
         self.dev.write_file_on_remote(strFilenameLocal=self.qedit_software.text(), strFilenameRemote='/opt/monitor-tcp-new')
 
@@ -366,8 +361,7 @@ class initialConfiguration(QtGui.QDialog):
 
         # send "reboot monitor-tcp" command
         self.dev.send_reboot_command()
-        self.dev.sock.shutdown(socket.SHUT_RDWR)
-        self.dev.sock.close()
+        self.dev.close_TCP_connection()
 
         time.sleep(1) # give some time for tcp server to come back up
         pass
@@ -389,6 +383,7 @@ class initialConfiguration(QtGui.QDialog):
         return
 
 def main():
+    import digital_servo # needed to update FPGA firmware and CPU (Zynq) software
 
     ###########################################################################
     # Start the User Interface
@@ -410,7 +405,7 @@ def main():
 
     strFPGAFirmware=r'D:\Projects\RedPitaya\fpga\project\redpitaya.runs\impl_1\red_pitaya_top.bit'
     strCPUFirmware=u'D:\\Université\\Dropbox\\22_H2015\\Red Pitaya\\monitor-tcp\\monitor-tcp'
-    dev = RP_PLL_device()
+    dev = digital_servo.RedPitayaDevice()
     initial_config = initialConfiguration(dev, devices_data=devices_data, strFPGAFirmware=strFPGAFirmware, strCPUFirmware=strCPUFirmware)
     # Run the event loop for this window
     app.exec_()

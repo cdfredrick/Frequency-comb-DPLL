@@ -4,7 +4,6 @@ Created on Mon Dec 16 09:51:07 2013
 
 @author: jnd
 """
-from __future__ import print_function
 
 import sys
 from PyQt5 import QtGui, Qt

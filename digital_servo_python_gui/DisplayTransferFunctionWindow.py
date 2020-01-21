@@ -3,7 +3,6 @@ XEM6010 Phase-lock box GUI, Transfer function display window
 by JD Deschenes, October 2013
 
 """
-from __future__ import print_function
 
 import sys
 import time

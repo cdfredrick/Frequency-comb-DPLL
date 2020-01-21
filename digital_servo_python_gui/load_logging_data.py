@@ -4,7 +4,6 @@ Created on Mon Apr 14 11:46:04 2014
 
 @author: jnd
 """
-from __future__ import print_function
 
 import time
 from PyQt5 import QtGui, Qt
