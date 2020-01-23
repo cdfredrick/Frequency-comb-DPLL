@@ -9,6 +9,7 @@ import struct
 import sys
 import time
 import threading
+import traceback
 
 import numpy as np
 
@@ -57,6 +58,15 @@ class RedPitayaDevice:
         self.sock = SocketPlaceholder()
         self.valid_socket = 0
 
+        self._n_reconnects = 0
+
+    ###########################################################################
+    #--- Red Pitaya System Limits:
+    ###########################################################################
+    #
+
+    def clock_freq_Hz(self):
+        return ADC_CLK_Hz
 
     ###########################################################################
     #--- Red Pitaya System Commands:
@@ -72,18 +82,23 @@ class RedPitayaDevice:
         self.sock.settimeout(2) # seconds
         self.sock.connect((self.HOST, self.PORT))
         self.valid_socket = 1
+        print("socket opened")
 
     def close_TCP_connection(self):
         print("RedPitayaDevice::close_TCP_connection()")
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
             self.sock.close()
+            print("socket closed")
         except:
             pass
         self.sock = SocketPlaceholder()
         self.valid_socket = 0
 
-    def restart_TCP_connection(self):
+    def restart_TCP_connection(self, print_error=True):
+        if print_error:
+            traceback.print_stack()
+            traceback.print_exc()
         self.close_TCP_connection()
         self.open_TCP_connection(self.HOST, self.PORT)
 
@@ -141,6 +156,15 @@ class RedPitayaDevice:
             buf += newbuf
             count -= len(newbuf)
         return buf
+
+    def dpll_read_address(self, dpll_addr_offset):
+        return dpll_read_address(dpll_addr_offset)
+
+    def dpll_write_address(self, dpll_addr_offset):
+        return dpll_write_address(dpll_addr_offset)
+
+    def dpll_legacy_read_address(self, dpll_addr_offset):
+        return legacy_read_address(dpll_addr_offset)
 
     ###########################################################################
     #--- Write to Zynq Register:
@@ -274,6 +298,7 @@ class RedPitayaDevice:
 
     # Read 32 bit Zynq Register -----------------------------------------------
     def read_Zynq_register_32(self, address_uint32):
+        # print("Register: {:X}".format(address_uint32))
         data_buffer = None
         # Check address alignment
         if address_uint32 % 4:
@@ -295,7 +320,7 @@ class RedPitayaDevice:
             self.restart_TCP_connection()
         # Return unaltered data buffer
         if data_buffer is None:
-            data_buffer = (0).to_bytes(4, 'little')
+            data_buffer = bytes() #(0).to_bytes(4, 'little')
         return data_buffer
 
     # Read 2x Unsigned int16 Zynq Register ------------------------------------
@@ -378,46 +403,12 @@ class RedPitayaDevice:
         print('Resetting FPGA (reset_front_end)...')
         self.write_Zynq_register_uint32(BUS_ADDR_TRIG_RESET_FRONTEND*4, 0)
 
-
-    #######################################################
-    #--- Legacy "Opal Kelly" API Emulation:
-    #######################################################
-    # this function is now disabled because we simply implemented "triggers" differently: they are simply the update_flag of an empty, but otherwise standard parallel bus register
-    # def ActivateTriggerIn(self, endpoint, value):
-    #   # this should send a trigger, most likely by toggling a value, and having the fpga diff that value
-    #   # or it could be simply a write to a dummy address and we just use the sys_we as the trigger
-    #   # although I am not sure if it is guaranteed to be 1-clock-cycle long
-    #   #print('ActivateTriggerIn(): TODO')
-    #   self.write_Zynq_register_uint32((endpoint+value)*4+value*4, 0)
-
-    def set_wire_in_value(self, endpoint, value_16bits):
-        # this only needs to update the internal state
-        # for this, there would need to be two versions of the internal state, so that we can diff them and commit only the addresses that have changed
-        # but its much simpler for now to just commit the change directly
-
-        #print('set_wire_in_value(): TODO')
-
-        # the multiply by 4 is because right now the zynq code doesn't work unless reading on a 32-bits boundary, so we map the addresses to different values
-        if value_16bits < 0:
-            # write as a signed value
-            self.write_Zynq_register_int32(endpoint*4, value_16bits)
-        else:
-            # write as an unsigned value
-            self.write_Zynq_register_uint32(endpoint*4, value_16bits)
-
-    def get_wire_out_value(self, endpoint):
-        # print('get_wire_out_value(): TODO')
-        # this reads a single 32-bits value from the fpga registers
-        # the Opal Kelly code expected a 16-bits value, so we mask them out for compatibility
-        rep = self.read_Zynq_register_uint32(4*endpoint)
-        return rep & 0xFFFF # the multiply by 4 is because right now the zynq code doesn't work unless reading on a 32-bits boundary, so we map the addresses to different values
-
     ###########################################################################
     #--- Auxiliary System Components:
     ###########################################################################
     #
 
-    def setFan(self, fanState):
+    def set_fan(self, fanState):
 
         self.fanState = fanState
 
@@ -432,6 +423,7 @@ class RedPitayaDevice:
 class LoopFilter:
     def __init__(self, device):
         assert isinstance(device, RedPitayaDevice)
+        self.dev = device
 
         self.dev = device # instance of RedPitayaDevice for device communications
 
@@ -470,6 +462,7 @@ class LoopFilter:
         self.manual_offset_addr_msbs = [base_addr + BUS_OFFSET_MAN_OFFSET_MSBs for base_addr in BUS_ADDR_PLL_BASE]
 
         # Gain Settings
+        self.bLock = [0 for channel in range(LF_CHANNELS)]
         self.gain_p = [0 for channel in range(LF_CHANNELS)]
         self.gain_i = [0 for channel in range(LF_CHANNELS)]
         self.gain_ii = [0 for channel in range(LF_CHANNELS)]
@@ -501,7 +494,7 @@ class LoopFilter:
         self.ddc_ref_freq_addr_msbs = [BUS_ADDR_REF_FREQ0_MSBs, BUS_ADDR_REF_FREQ1_MSBs]
 
         self.ddc_filter_select = [0, 0]
-        self.ddc_angle_seelct = [0, 0]
+        self.ddc_angle_select = [0, 0]
         self.lf_residuals_selector = [0, 0]
 
         self.ddc_ref_freq_Hz = [125e6/4, 125e6/4]
@@ -674,6 +667,7 @@ class LoopFilter:
         self.gain_ii[channel] = gain_ii_int/2.**N_BITS_DIVIDE_II[channel]
         self.gain_d[channel] = gain_d_int/2.**N_BITS_DIVIDE_D[channel]
         self.coef_df[channel] = coef_df_int/2.**N_BITS_DIVIDE_DF[channel]
+        self.bLock[channel] = bLock
 
         if bDebugOutput:
             print('P_gain = {:.4g}, in integer: P_gain = {:d} = 2^{:.3f}'.format(self.gain_p[channel], gain_p_int, 1+np.log2(gain_p_int)))
@@ -739,12 +733,12 @@ class LoopFilter:
         gain_ol = self.dev.read_Zynq_register_float32(
             dpll_read_address(self.gain_ol_addr[channel]))
 
-        self.bLock   = bLock
-        self.gain_p[channel]  = gain_p_int/2.**N_BITS_DIVIDE_P
-        self.gain_i[channel]  = gain_i_int/2.**N_BITS_DIVIDE_I
-        self.gain_ii[channel] = gain_ii_int/2.**N_BITS_DIVIDE_II
-        self.gain_d[channel]  = gain_d_int/2.**N_BITS_DIVIDE_D
-        self.coef_df[channel] = coef_df_int/2.**N_BITS_DIVIDE_DF
+        self.bLock[channel]   = bLock
+        self.gain_p[channel]  = gain_p_int/2.**N_BITS_DIVIDE_P[channel]
+        self.gain_i[channel]  = gain_i_int/2.**N_BITS_DIVIDE_I[channel]
+        self.gain_ii[channel] = gain_ii_int/2.**N_BITS_DIVIDE_II[channel]
+        self.gain_d[channel]  = gain_d_int/2.**N_BITS_DIVIDE_D[channel]
+        self.coef_df[channel] = coef_df_int/2.**N_BITS_DIVIDE_DF[channel]
         self.gain_ol[channel] = gain_ol # float to float, no conversion
         return (self.gain_p[channel],  self.gain_i[channel], self.gain_ii[channel], self.gain_d[channel], self.coef_df[channel], self.bLock[channel], self.gain_ol[channel])
 
@@ -810,12 +804,12 @@ class LoopFilter:
         #H_diff = 1j*unit_delay_phase_ramp
 
         # The transfer function is the sum of the four terms (P, I, II, D)
-        H_loop_filters_P = self.gain_p[channel] * np.exp(-1j*N_CYCLS_DELAY_P * unit_delay_phase_ramp)
-        H_loop_filters_I = self.gain_i[channel] * H_cumsum * np.exp(-1j*N_CYCLES_DELAY_I * unit_delay_phase_ramp)
-        H_loop_filters_II = self.gain_ii[channel] * H_cumsum**2 * np.exp(-1j*N_CYCLES_DELAY_II * unit_delay_phase_ramp)
-        H_loop_filters_D = self.gain_d[channel] * H_diff * H_filt * np.exp(-1j*N_CYCLES_DELAY_D * unit_delay_phase_ramp)
+        H_loop_filters_P = self.gain_p[channel] * np.exp(-1j*N_CYCLS_DELAY_P[channel] * unit_delay_phase_ramp)
+        H_loop_filters_I = self.gain_i[channel] * H_cumsum * np.exp(-1j*N_CYCLES_DELAY_I[channel] * unit_delay_phase_ramp)
+        H_loop_filters_II = self.gain_ii[channel] * H_cumsum**2 * np.exp(-1j*N_CYCLES_DELAY_II[channel] * unit_delay_phase_ramp)
+        H_loop_filters_D = self.gain_d[channel] * H_diff * H_filt * np.exp(-1j*N_CYCLES_DELAY_D[channel] * unit_delay_phase_ramp)
         H_loop_filters = H_loop_filters_P + H_loop_filters_II + H_loop_filters_I + H_loop_filters_D
-        #print(H_loop_filters)
+        # print(H_loop_filters)
 
         return H_loop_filters
 
@@ -858,7 +852,7 @@ class LoopFilter:
         int_open_loop_gain_parameter = open_loop_gain / unit_conversion_factor
         return int_open_loop_gain_parameter
 
-    def open_loop_gain(self, int_open_loop_gain_parameter, channel):
+    def open_loop_gain(self, channel, int_open_loop_gain_parameter):
         unit_conversion_factor = self.open_loop_gain_unit_conversion_factor(channel)
 
         ol_gain = int_open_loop_gain_parameter * unit_conversion_factor
@@ -913,7 +907,7 @@ class LoopFilter:
             dither_enable = int(enable_dither)
 
         self.dither_frequency_Hz[channel] = ADC_CLK_Hz/((modulation_period_divided_by_4_minus_one+1)*4)
-        self.integration_time_s[channel] = N_periods * self.dither_frequency_Hz[channel]
+        self.integration_time_s[channel] = N_periods / self.dither_frequency_Hz[channel]
         self.dither_amplitude_V[channel] = dither_amplitude_int * DAC_V_INT
         self.auto_dither_mode[channel] = mode_auto
         if enable_dither is not None:
@@ -1078,6 +1072,14 @@ class LoopFilter:
         return frequency_resolution
 
     ###########################################################################
+    #--- Digital Down Converter (DDC) Parameter Limits
+    ###########################################################################
+    #
+
+    def ddc_frequency_limits(self):
+        return (-DDC_FREQ_Hz_HR, DDC_FREQ_Hz_HR)
+
+    ###########################################################################
     #--- Read/Write Digital Down Converter (DDC) Parameters
     ###########################################################################
     #
@@ -1110,16 +1112,16 @@ class LoopFilter:
 
         # DDC Filter Selection:
         register_value = (
-                self.set_bits(self.ddc_filter_select[0], 0, bit_length=2)
-                +self.set_bits(self.ddc_filter_select[1], 2, bit_length=2)
-                +self.set_bits(self.lf_residuals_selector[0], 4)
-                +self.set_bits(self.lf_residuals_selector[1], 5))
+                set_bits(self.ddc_filter_select[0], 0, bit_length=2)
+                +set_bits(self.ddc_filter_select[1], 2, bit_length=2)
+                +set_bits(self.lf_residuals_selector[0], 4)
+                +set_bits(self.lf_residuals_selector[1], 5))
         self.dev.write_Zynq_register_uint32(
                 dpll_write_address(BUS_ADDR_DDC_FILT_SEL),
                 register_value)
         # "Angle" Selection:
-        register_value = (self.set_bits(self.ddc_angle_select[0], 0, bit_length=4)
-                          +self.set_bits(self.ddc_angle_select[0], 4, bit_length=4))
+        register_value = (set_bits(self.ddc_angle_select[0], 0, bit_length=4)
+                          +set_bits(self.ddc_angle_select[0], 4, bit_length=4))
         self.dev.write_Zynq_register_uint32(
                 dpll_write_address(BUS_ADDR_DDC_ANGLE_SEL),
                 register_value)
@@ -1129,8 +1131,8 @@ class LoopFilter:
         data = self.dev.read_Zynq_register_uint32(
                 dpll_read_address(BUS_ADDR_DDC_FILT_SEL))
 
-        self.ddc_filter_select[0] = self.get_bits(data, 0, bit_length=2)
-        self.ddc_filter_select[1] = self.get_bits(data, 2, bit_length=2)
+        self.ddc_filter_select[0] = get_bits(data, 0, bit_length=2)
+        self.ddc_filter_select[1] = get_bits(data, 2, bit_length=2)
 
         return (self.ddc_filter_select[1], self.ddc_filter_select[0])
 
@@ -1138,8 +1140,8 @@ class LoopFilter:
 
         data = self.dev.read_Zynq_register_uint32(
                 dpll_read_address(BUS_ADDR_DDC_ANGLE_SEL))
-        self.ddc_angle_select[0] = self.get_bits(data, 0, bit_length=4)
-        self.ddc_angle_select[1] = self.get_bits(data, 4, bit_length=4)
+        self.ddc_angle_select[0] = get_bits(data, 0, bit_length=4)
+        self.ddc_angle_select[1] = get_bits(data, 4, bit_length=4)
 
         return (self.ddc_angle_select[1], self.ddc_angle_select[0])
 
@@ -1154,13 +1156,13 @@ class LoopFilter:
         '''
         return ddc_frequency_int * DDC_FREQ_HZ_INT
 
-    def frontend_DDC_processing(self, channel, samples, ref_exp0):
-
+    def frontend_DDC_processing(self, channel, samples_int, ref_exp0):
+        # TODO: Check low pass filter calculations
         # Fractional Frequency Offset
-        f_reference = self.DDS_frequency(self.ddc_int_phase_incr[channel]) / ADC_CLK_Hz
+        ref_freq = self.DDS_frequency(self.ddc_phase_incr_int[channel])
 
-        ref_exp = (ref_exp0)/np.abs(ref_exp0) * np.exp(-1j*2*np.pi*f_reference*np.array(range(len(samples))))
-        complex_baseband = (samples-np.mean(samples)) * ref_exp
+        ref_exp = (ref_exp0)/np.abs(ref_exp0) * np.exp(-1j*2*np.pi * ref_freq/ADC_CLK_Hz * np.array(range(len(samples_int))))
+        complex_baseband_int = samples_int * ref_exp
 
         # There are two versions of the firmware in use: one uses a 20points boxcar filter,
         # the other one uses a wider bandwidth filter, consisting of a cascade of a 2-pts boxcar, another 2-pts boxcar, and finally a 4-points boxcar.
@@ -1178,12 +1180,13 @@ class LoopFilter:
             N_filter = 16+2
             lpf = np.array([4533, 11833, 14589, 7610, -2628, -5400, -350, 3293, 1086, -1867, -1080, 956, 800, -462, -650, 338])/(2.**15-1)
             lpf = np.convolve(np.ones(2, dtype=float)/2., lpf)
-        complex_baseband = lfilter(lpf, 1, complex_baseband)[N_filter:]
-        return complex_baseband
+        complex_baseband_int = lfilter(lpf, 1, complex_baseband_int)[N_filter:]
+        complex_baseband_V = ADC_V_INT * complex_baseband_int
+        return (complex_baseband_int, complex_baseband_V)
 
     def get_frontend_filter_response(self, channel, frequency_axis):
 
-        f_reference = self.DDS_frequency(self.ddc_int_phase_incr[channel])
+        ref_freq = self.DDS_frequency(self.ddc_phase_incr_int[channel])
 
         filter_select = self.ddc_filter_select[channel]
         #angle_select  = self.ddc_angle_select[channel]
@@ -1192,18 +1195,18 @@ class LoopFilter:
             # wideband filter
             spc_filter = np.ones(frequency_axis.shape, dtype=float)
             N_filter = 2
-            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)
-            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)
+            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)
+            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)
             N_filter = 4
-            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)
+            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)
 
             spc_filter = 20*np.log10(np.abs(spc_filter) + 1e-7)
         elif filter_select == 1:
             # narrowband filter
             N_filter = 16
-            spc_filter = np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)
+            spc_filter = np.sin(np.pi * (abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)
             N_filter = 4
-            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(f_reference))+10)*N_filter/ADC_CLK_Hz)
+            spc_filter = spc_filter * np.sin(np.pi * (abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)/ (np.pi*(abs(frequency_axis-abs(ref_freq))+10)*N_filter/ADC_CLK_Hz)
 
             spc_filter = 20*np.log10(np.abs(spc_filter) + 1e-7)
         elif filter_select == 2:
@@ -1212,7 +1215,7 @@ class LoopFilter:
             lpf = np.convolve(np.ones(2, dtype=float)/2., lpf)
             spc_ref = np.fft.fft(lpf, 2*len(frequency_axis))
             freq_axis_ref = np.linspace(0*ADC_CLK_Hz, 1*ADC_CLK_Hz, 2*len(frequency_axis))
-            spc_filter = np.interp(abs(frequency_axis-abs(f_reference)), freq_axis_ref, np.abs(spc_ref))
+            spc_filter = np.interp(abs(frequency_axis-abs(ref_freq)), freq_axis_ref, np.abs(spc_ref))
             spc_filter = 20*np.log10(np.abs(spc_filter) + 1e-7)
 
         return spc_filter
@@ -1220,15 +1223,14 @@ class LoopFilter:
 
 class DigitalToAnalogConverter:
     #contains dac and vco stuff
-    def __init__(self):
-        self.DACs_limit_low = copy.copy(DAC_LIM_LOW_INT) # [:] returns copy
-        self.DACs_limit_high = copy.copy(DAC_LIM_HIGH_INT)
+    def __init__(self, device):
+        assert isinstance(device, RedPitayaDevice)
+        self.dev = device
 
-        self.DAC_limits_low_int = copy.copy(DAC_LIM_LOW_INT)
-        self.DAC_limits_high_int = copy.copy(DAC_LIM_HIGH_INT)
-
-        self.DAC_limits_low_V
-        self.DAC_limits_high_V
+        self.DAC_limits_low_int = [int_lim for int_lim in DAC_LIM_LOW_INT]
+        self.DAC_limits_high_int = [int_lim for int_lim in DAC_LIM_HIGH_INT]
+        self.DAC_limits_low_V = [int_lim * DAC_V_INT for int_lim in DAC_LIM_LOW_INT]
+        self.DAC_limits_high_V = [int_lim * DAC_V_INT for int_lim in DAC_LIM_HIGH_INT]
 
         self.output_vco = [0, 0, 0]
 
@@ -1238,17 +1240,19 @@ class DigitalToAnalogConverter:
                                  "high":BUS_ADDR_dac2_limit_high}]
 
     ###########################################################################
-    #--- Primary DAC Hardware Limits:
+    #--- Primary DAC Limits:
     ###########################################################################
     #
 
-    def int_dac_hw_limit(self, channel):
+    def dac_hw_limit_int(self, channel):
+        '''Hardware Limits'''
         limit_low_int = DAC_LIM_LOW_INT[channel]
         limit_high_int = DAC_LIM_HIGH_INT[channel]
         return (limit_low_int, limit_high_int)
 
-    def dac_hw_limit(self, channel):
-        (limit_low_int, limit_high_int) = self.int_dac_hw_limit(channel)
+    def dac_hw_limit_V(self, channel):
+        '''Hardware Limits'''
+        (limit_low_int, limit_high_int) = self.dac_hw_limit_int(channel)
         limit_low_V = limit_low_int * DAC_V_INT
         limit_high_V = limit_high_int * DAC_V_INT
         return (limit_low_V, limit_high_V)
@@ -1259,7 +1263,7 @@ class DigitalToAnalogConverter:
     ###########################################################################
     #
 
-    def set_dac_limits(self, channel, limit_low_V, limit_high_V, bSendToFPGA = True):
+    def set_dac_limits_V(self, channel, limit_low_V, limit_high_V, bSendToFPGA = True):
 
         limit_low_int = int(round(limit_low_V / DAC_V_INT))
         limit_high_int = int(round(limit_high_V / DAC_V_INT))
@@ -1268,12 +1272,12 @@ class DigitalToAnalogConverter:
             limit_high_int = DAC_LIM_HIGH_INT[channel]
         if limit_low_int < DAC_LIM_LOW_INT[channel]:
             limit_low_int = DAC_LIM_LOW_INT[channel]
-        #print('dac = %d, low = %d, high = %d' % (channel, limit_low, limit_high))
+        # print('dac = %d, low = %d, high = %d' % (channel, limit_low, limit_high))
 
-        self.DACs_limit_low_int[channel] = limit_low_int
-        self.DACs_limit_high_int[channel] = limit_high_int
-        self.DACs_limit_low_V[channel] = limit_low_int * DAC_V_INT
-        self.DACs_limit_high_V[channel] = limit_high_int * DAC_V_INT
+        self.DAC_limits_low_int[channel] = limit_low_int
+        self.DAC_limits_high_int[channel] = limit_high_int
+        self.DAC_limits_low_V[channel] = limit_low_int * DAC_V_INT
+        self.DAC_limits_high_V[channel] = limit_high_int * DAC_V_INT
 
         if (channel == 0) or (channel == 1):
             self.dev.write_Zynq_register_2x_int16(
@@ -1288,7 +1292,7 @@ class DigitalToAnalogConverter:
                 dpll_write_address(self.DAC_limits_addr[channel]["high"]),
                 limit_high_int)
 
-    def get_dac_limits(self, channel):
+    def get_dac_limits_V(self, channel):
 
         if (channel == 0) or (channel == 1):
             (limit_low_int, limit_high_int) = self.dev.read_Zynq_register_2x_int16(
@@ -1299,12 +1303,12 @@ class DigitalToAnalogConverter:
             limit_high_int = self.dev.read_Zynq_register_int32(
                 dpll_read_address(self.DAC_limits_addr[channel]["high"]))
 
-        self.DACs_limit_low[channel] = limit_low_int
-        self.DACs_limit_high[channel] = limit_high_int
-        self.DACs_limit_low_V[channel] = limit_low_int * DAC_V_INT
-        self.DACs_limit_high_V[channel] = limit_high_int * DAC_V_INT
+        self.DAC_limits_low_int[channel] = limit_low_int
+        self.DAC_limits_high_int[channel] = limit_high_int
+        self.DAC_limits_low_V[channel] = limit_low_int * DAC_V_INT
+        self.DAC_limits_high_V[channel] = limit_high_int * DAC_V_INT
 
-        return (self.DACs_limit_low_V[channel], self.DACs_limit_high_V[channel])
+        return (self.DAC_limits_low_V[channel], self.DAC_limits_high_V[channel])
 
     ###########################################################################
     #--- Primary DAC Helper Functions:
@@ -1434,294 +1438,262 @@ class DigitalToAnalogConverter:
 
 class DataAcquisition:
     # everything for reading time domain signals, frequency counters, dacs, leds, etc...
-    def __init__(self):
-        # Communication Locks
-        self.bDDR2InUse = False  # TODO: change to threading.lock
-        self.RAM_lock = threading.Lock()
+    def __init__(self, device):
+        assert isinstance(device, RedPitayaDevice)
+        self.dev = device
+
+        # Comm Locks
+        self.logger_lock = threading.Lock()
 
         # Triangular averaging is on by default:
-        self.bTriangularAveraging = 1
+        self.counter_mode = 1
 
         # this holds a sample number used to make sure that we don't grab the same counter samples twice
-        self.last_zdtc_samples_number_counter = [0, 0]
+        self.counter_sample_number = 0
 
         self.last_freq_update = 0
         self.new_freq_setting_number = 0
 
     ###########################################################################
-    #--- Frequency Counters:
+    #--- Read/Write Counter Settings:
     ###########################################################################
     #
 
-    #--------------------------------------------------------------------------
-    # Frequency Counters Helper Functions:
-    #
-
-    def scaleCounterReadingsIntoHz(self, freq_counter_samples):
-
-        # Scale the counter values into Hz units:
-        # f = data_out * fs / 2^N_INPUT_BITS / conversion_gain
-        N_INPUT_BITS = DDC_FREQ_N_BITS
-        if self.bTriangularAveraging:
-            conversion_gain = COUNTER_GATE_TIME_N_CYCLES * (COUNTER_GATE_TIME_N_CYCLES + 1)
-        else:
-            # Rectangular averaging:
-            conversion_gain = COUNTER_GATE_TIME_N_CYCLES
-        freq_counter_samples = freq_counter_samples * ADC_CLK_Hz / 2**(N_INPUT_BITS) / conversion_gain
-        return freq_counter_samples
-
-    def new_freq_setting(self):
-        '''Used for testing the frequency counter transfer function with
-        the VNA.
-        '''
-        # Check if dither is set, then call
-        self.new_freq_setting_number = self.new_freq_setting_number + 1
-        modulation_frequency_in_hz = ((self.new_freq_setting_number-1)/2) * 0.05 + 0.025 #TODO: what are these numbers?
-
-        output_select = 0
-        bSquareWave = False
-        # half the time we turn the modulation on, half the time we turn it off
-        if self.new_freq_setting_number % 2 == 0:
-            bEnableDither = True
-        else:
-            bEnableDither = False
-        output_amplitude = int(float(self.DACs_limit_high[output_select] - self.DACs_limit_low[output_select])*float(0.01)/2)
-
-        # This is only really to set the dither
-        # we don't care about these values:
-        input_select = 0
-        number_of_frequencies = 8
-        System_settling_time = 1e-3
-        self.setup_system_identification(input_select, output_select, modulation_frequency_in_hz, modulation_frequency_in_hz, number_of_frequencies, System_settling_time, output_amplitude, 0)
-
-        print('new_freq_setting: (output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither) = %d, %f, %f, %d, %d' % (output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither))
-
-        trigger_dither = bEnableDither
-        if bEnableDither == False:
-            stop_flag = 1
-        else:
-            stop_flag = 0
-        self.setVNA_mode_register(trigger_dither, stop_flag, bSquareWave)
-        print('(trigger_dither, stop_flag, bSquareWave) = %d, %d, %d' % (trigger_dither, stop_flag, bSquareWave))
-
-    #--------------------------------------------------------------------------
-    # Read/Write Frequency Counter Parameters:
-    #
-
-    def setCounterMode(self, bTriangular):
-        assert isinstance(bTriangular, int)
-        # bTriangular = 1 means triangular averaging, bTriangular = 0 means rectangular averaging
+    def set_counter_mode(self, counter_mode):
+        # counter_mode = 1 means triangular averaging, counter_mode = 0 means rectangular averaging
         self.dev.write_Zynq_register_uint16(
                 dpll_write_address(BUS_ADDR_triangular_averaging),
-                bTriangular)
-        self.bTriangularAveraging = bTriangular
+                counter_mode)
+        self.counter_mode = counter_mode
 
-    def getCounterMode(self):
-        self.bTriangularAveraging = self.dev.read_Zynq_register_uint16(
+    def get_counter_mode(self):
+        self.counter_mode = self.dev.read_Zynq_register_uint16(
                 dpll_read_address(BUS_ADDR_triangular_averaging))
-        return self.bTriangularAveraging
+        return self.counter_mode
 
-    def read_dual_mode_counter(self, output_number):
-        # fetch data
+    def get_counter_period(self):
+        return COUNTER_GATE_TIME_N_CYCLES / ADC_CLK_Hz
+
+    ###########################################################################
+    #--- Read Counter Data:
+    ###########################################################################
+    #
+
+    def read_dual_mode_counter(self):
+        #--- Fetch Data
         # reading at this address samples all frequency counter data at the same time (see registers_read.vhd for details)
-        zdtc_samples_number_counter = self.dev.read_Zynq_register_uint32(BUS_ADDR_ZERO_DEADTIME_SAMPLES_NUMBER*4)
-        increments = zdtc_samples_number_counter - self.last_zdtc_samples_number_counter[output_number]
-        if increments != 0:
-            # # this is used only for internal testing of the frequency counter's transfer function
-            # if output_number == 0:
-            #     if zdtc_samples_number_counter-self.last_freq_update == 50 or self.last_freq_update == 0:
-            #         self.new_freq_setting()
-            #         self.last_freq_update = zdtc_samples_number_counter
-            # we have new unread samples
+        new_counter_sample_number = self.dev.read_Zynq_register_uint32(
+            legacy_read_address(BUS_ADDR_ZERO_DEADTIME_SAMPLES_NUMBER))
+        sample_incr = new_counter_sample_number - self.counter_sample_number
+        if sample_incr != 0:
+            # Read Counter Channel 0
             freq_counter0_sample = self.dev.read_Zynq_register_int64(
-                    dpll_write_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_LSBS), # use write address, legacy "Opal Kelly" I/O
-                    dpll_write_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_MSBS))
+                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_LSBS),
+                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_MSBS))
+            # Read Counter Channel 1
             freq_counter1_sample = self.dev.read_Zynq_register_int64(
-                    dpll_write_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_LSBS), # use write address, legacy "Opal Kelly" I/O
-                    dpll_write_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_MSBS))
-            # print("zdtc_samples_number_counter = %d, was %d, read new values" % (zdtc_samples_number_counter, self.last_zdtc_samples_number_counter[output_number]))
-            if increments>1 and self.last_zdtc_samples_number_counter[output_number] != 0:
-                print("Warning, %d counter sample(s) dropped on counter #%d" % (zdtc_samples_number_counter-self.last_zdtc_samples_number_counter[output_number]-1, output_number))
+                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_LSBS),
+                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_MSBS))
+            if sample_incr>1 and self.counter_sample_number != 0:
+                print("Warning, %d counter sample(s) dropped" % (new_counter_sample_number-self.counter_sample_number-1))
         else:
             # we have already read all the counter samples for this output
             freq_counter0_sample = None
             freq_counter1_sample = None
-            # print("zdtc_samples_number_counter = %d, was %d, didn't read values" % (zdtc_samples_number_counter, self.last_zdtc_samples_number_counter[output_number]))
-        self.last_zdtc_samples_number_counter[output_number] = zdtc_samples_number_counter
+        self.counter_sample_number = new_counter_sample_number
 
         dac0_samples = self.dev.read_Zynq_register_int16(
-                dpll_write_address(BUS_ADDR_DAC0_CURRENT)) # use write address, legacy "Opal Kelly" I/O
+            legacy_read_address(BUS_ADDR_DAC0_CURRENT))
         dac1_samples = self.dev.read_Zynq_register_int16(
-                dpll_write_address(BUS_ADDR_DAC1_CURRENT)) # use write address, legacy "Opal Kelly" I/O
-
-        # convert to numpy format:
-        dac0_samples = np.array((dac0_samples,))
-        dac1_samples = np.array((dac1_samples,))
-        dac2_samples = np.array((0,))
+            legacy_read_address(BUS_ADDR_DAC1_CURRENT))
 
         # scale to physical units
         if freq_counter0_sample is not None:
-            freq_counter0_sample = self.scaleCounterReadingsIntoHz(freq_counter0_sample)
+            freq_counter0_sample = self.counter_frequency_Hz(freq_counter0_sample)
         if freq_counter1_sample is not None:
-            freq_counter1_sample = self.scaleCounterReadingsIntoHz(freq_counter1_sample)
+            freq_counter1_sample = self.counter_frequency_Hz(freq_counter1_sample)
 
-        time_axis = None # not currently used anymore
-        if output_number == 0:
-            return (freq_counter0_sample, time_axis, dac0_samples, dac1_samples, dac2_samples)
-        elif output_number == 1:
-            return (freq_counter1_sample, time_axis, dac0_samples, dac1_samples, dac2_samples)
+        return ((freq_counter0_sample, dac0_samples),
+                (freq_counter1_sample, dac1_samples))
 
     ###########################################################################
-    #--- Data Logger:
+    #--- Counter Helper Functions:
     ###########################################################################
     #
 
-    #--------------------------------------------------------------------------
-    # Data Logger Helper Functions:
-    #
-
-    def wait_for_write(self):
-        # Wait, seems necessary because setting the DDR2Logger to 'read' mode overrides the 'write' mode
-        write_delay = 1.1*1024*(int(self.Num_samples_write/1024) + 1)/(ADC_CLK_Hz/2)
-#        print('Waiting for the DDR to fill up... (%f secs)' % ((write_delay)))
-        time.sleep(write_delay)
-#        print('Done!')
-
-    #--------------------------------------------------------------------------
-    # Read/Write Data Logger Parameters:
-    #
-
-    def setup_write(self, selector, Num_samples):
-        self.Num_samples_write = int(Num_samples)  # no such restriction with the Red Pitaya implementation
-        self.Num_samples_read = self.Num_samples_write
-
-        # Select which data bus to put in the RAM:
-        self.last_selector = selector
-        self.dev.set_wire_in_value(BUS_ADDR_MUX_SELECTORS, self.last_selector)
-
-
-    def setup_ADC0_write(self, Num_samples):
-        self.setup_write(SELECT_ADC0, Num_samples)
-
-    def setup_ADC1_write(self, Num_samples):
-        self.setup_write(SELECT_ADC1, Num_samples)
-
-    def setup_DDC0_write(self, Num_samples):
-        self.setup_write(SELECT_DDC0, Num_samples)
-
-    def setup_DDC1_write(self, Num_samples):
-        self.setup_write(SELECT_DDC1, Num_samples)
-
-    def setup_counter_write(self, Num_samples):
-        self.setup_write(SELECT_COUNTER, Num_samples)
-
-    def setup_DAC0_write(self, Num_samples):
-        self.setup_write(SELECT_DAC0, Num_samples)
-
-    def setup_DAC1_write(self, Num_samples):
-        self.setup_write(SELECT_DAC1, Num_samples)
-
-    def setup_DAC2_write(self, Num_samples):
-        self.setup_write(SELECT_DAC2, Num_samples)
-
-    def trigger_write(self):
-        ''' Trigger writing to the data logger.'''
-        # Start writing data to the BRAM:
-        self.dev.write_Zynq_register_uint32(BUS_ADDR_TRIG_WRITE, 0) # address outside of "dpll_wrapper"
-        #self.dev.ActivateTriggerIn(self.ENDPOINT_CMD_TRIG, self.TRIG_CMD_STROBE)
-
-    def read_raw_bytes_from_DDR2(self):
-
-        bytes_per_sample = 2
-        Num_bytes_read = self.Num_samples_read*bytes_per_sample
-
-        data_buffer = self.dev.read_Zynq_buffer_16(self.Num_samples_read)
-
-        if Num_bytes_read != len(data_buffer):
-            print('Error: did not receive the expected number of bytes. expected: %d, Received: %d' % (Num_bytes_read, len(data_buffer)))
-
-        return data_buffer
-
-    def read_adc_samples_from_DDR2(self):
-
-        data_buffer = self.read_raw_bytes_from_DDR2()
-        samples_out = np.frombuffer(data_buffer, dtype=np.int16)
-        if len(samples_out) == 0:
-            ref_exp = np.array([1.0,])
-            return (samples_out, ref_exp)
-
-        # There is one additional thing we need to take care:
-        # Samples #4 and 5 (counting from 0) contain the DDC reference exponential for this data packet:
-        ref_exp_expected_position = 6
-        magic_bytes_expected_position = ref_exp_expected_position+2
-        ref_exp = samples_out[ref_exp_expected_position].astype(np.float) + 1j * samples_out[ref_exp_expected_position+1].astype(np.float)
-        # ref_exp is the reference phasor at sample #4, we need to extrapolate it to the first correct output sample (#6, or two samples later)
-
-        if self.last_selector ==  0 or self.last_selector == 1:
-            # We have placed two magic bytes in sample 7, so that we can detect loss of synchronization on that data stream:
-            magic_bytes = int('1010100010001111', 2) # from aux_data_mux.vhd: 1010_1000_1000_1111
-            # magic_bytes is interpreted by python as an unsigned uint16, while samples_out[7] is interpreted as a signed int16
-            N_bits = 16
-            mask_negative_bit = (1<<(N_bits-1))
-            mask_other_bits = mask_negative_bit-1
-            magic_bytes = (magic_bytes & mask_other_bits) - (magic_bytes & mask_negative_bit)
-
-            if samples_out[magic_bytes_expected_position] != magic_bytes:
-                print('Comms bug! Sorry about that.')
-                print('Loss of synchronization detected on Pipe 0xA1:')
-                print('Original read length: %d' % self.Num_samples_read)
-                actual_position = magic_bytes_expected_position
-                for iter in range(len(samples_out)):
-                    if samples_out[iter] == magic_bytes:
-                        actual_position = iter
-                        print('magic bytes found at position %d' % actual_position)
-                        break
-                print('magic bytes (hex) = 0x%x, samples_out[magic_bytes_expected_position] (hex) = 0x%x' % (magic_bytes, samples_out[magic_bytes_expected_position]))
-                print('magic bytes (dec) = %d, samples_out[magic_bytes_expected_position] (dec) = %d' % (magic_bytes, samples_out[magic_bytes_expected_position]))
-        # Here we need to know if this was ADC 0 or 1, so that we use the correct DDC reference frequency to extrapolate the phase:
-        N_delay_between_ref_exp_and_datastream = 4 #TODO: make this 0 delay on the FPGA!
-        if (self.last_selector == 0 or self.last_selector == 1):
-            # ADC 0 or 1
-            phase_increment_int = self.ddc_phase_incr_int[self.last_selector]
-            ref_exp = ref_exp * np.exp(-1j*2*np.pi*N_delay_between_ref_exp_and_datastream*(float(phase_increment_int)/float(2**48)))
-            # Strip off the samples that were used to pass side information
-            samples_out = samples_out[magic_bytes_expected_position+1:]
+    def counter_frequency_Hz(self, counter_frequency_int):
+        # Scale the counter values into Hz units:
+        # f = data_int / conversion_gain * (ADC_CLK_Hz / 2**LF_ERR_SIG_BITS)
+        if self.counter_mode:
+            # Triangular averaging
+            conversion_gain = COUNTER_GATE_TIME_N_CYCLES * (COUNTER_GATE_TIME_N_CYCLES + 1)
         else:
-            # Other (DAC0, DAC1 or DAC2): there is no ref exp in the samples
-            ref_exp = 1
-            samples_out = samples_out
-        # Now ref_exp contains the reference phasor, aligned with the first sample that this function will return
+            # Rectangular averaging
+            conversion_gain = COUNTER_GATE_TIME_N_CYCLES
+        counter_frequency_Hz = (counter_frequency_int / conversion_gain) * ADC_CLK_Hz / 2**LF_ERR_SIG_BITS
+        return counter_frequency_Hz
 
-        return (samples_out, ref_exp)
+    # def test_counter(self):
+    #     #TODO: make this sensible...
+    #     # # this is used only for internal testing of the frequency counter's transfer function
+    #     self.read_dual_mode_counter() #update sample number counter
+    #     last_freq_update = self.counter_sample_number
+    #     for x in range(10):
+    #         while (self.counter_sample_number-last_freq_update <= 50) and (self.counter_sample_number != 0):
+    #             pass # read a bunch of counter values
+    #         self.new_freq_setting()
 
-    def read_dac_samples_from_DDR2(self):
-        data_buffer = self.read_raw_bytes_from_DDR2()
-        samples_out = np.frombuffer(data_buffer, dtype=np.int16)
-        return samples_out
+    # def new_freq_setting(self):
+    #     '''Used for testing the frequency counter transfer function with
+    #     the VNA.
+    #     '''
+    #     # Check if dither is set, then call
+    #     self.new_freq_setting_number = self.new_freq_setting_number + 1
+    #     modulation_frequency_in_hz = ((self.new_freq_setting_number-1)/2) * 0.05 + 0.025 #TODO: what are these numbers?
 
-    def read_ddc_samples_from_DDR2(self):
-        data_buffer = self.read_raw_bytes_from_DDR2()
-        samples_out = np.frombuffer(data_buffer, dtype=np.int16)
-        # The samples represent instantaneous frequency as: samples_out = diff(phi)/(2*pi*fs) * 2**12, where phi is the phase in radians
-        inst_freq = (samples_out.astype(dtype=float)) * DDC_FREQ_HZ_INT
-        # print('Mean frequency error = %f Hz' % np.mean(inst_freq))
-        return inst_freq
+    #     output_select = 0
+    #     bSquareWave = False
+    #     # half the time we turn the modulation on, half the time we turn it off
+    #     if self.new_freq_setting_number % 2 == 0:
+    #         bEnableDither = True
+    #     else:
+    #         bEnableDither = False
+    #     output_amplitude = int(float(self.DACs_limit_high[output_select] - self.DACs_limit_low[output_select])*float(0.01)/2)
 
-    def read_counter_samples_from_DDR2(self):
-        data_buffer = self.read_raw_bytes_from_DDR2()
-        # convert to numpy array
-        data_buffer = np.fromstring(data_buffer, dtype=np.uint8)
+    #     # This is only really to set the dither
+    #     # we don't care about these values:
+    #     input_select = 0
+    #     number_of_frequencies = 8
+    #     system_settling_time = 1e-3
+    #     self.setup_system_identification(input_select, output_select, modulation_frequency_in_hz, modulation_frequency_in_hz, number_of_frequencies, system_settling_time, output_amplitude, 0)
 
-        bytes_per_sample = 2
-        data_buffer_reshaped = np.reshape(data_buffer, (-1, bytes_per_sample))
-        convert_4bytes_unsigned = np.array((2**(2*8), 2**(3*8), 2**(0*8), 2**(1*8)))
-        convert_2bytes_signed = np.array((2**(0*8), 2**(1*8)), dtype=np.int16)
-        samples_out         = np.dot(data_buffer_reshaped[:, :].astype(np.int16), convert_2bytes_signed)
+    #     print('new_freq_setting: (output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither) = %d, %f, %f, %d, %d' % (output_select, modulation_frequency_in_hz, output_amplitude, bSquareWave, bEnableDither))
 
-        return samples_out
+    #     trigger_dither = bEnableDither
+    #     if bEnableDither == False:
+    #         stop_flag = 1
+    #     else:
+    #         stop_flag = 0
+    #     self.set_vna_mode(trigger_dither, stop_flag, bSquareWave)
+    #     print('(trigger_dither, stop_flag, bSquareWave) = %d, %d, %d' % (trigger_dither, stop_flag, bSquareWave))
 
-    def read_VNA_samples_from_DDR2(self):
-        data_buffer = self.read_raw_bytes_from_DDR2()
+    ###########################################################################
+    #--- Read/Write VNA Settings:
+    ###########################################################################
+    #
+
+    def setup_system_identification(self, input_select,
+                                    output_select,
+                                    first_modulation_frequency_in_hz,
+                                    last_modulation_frequency_in_hz,
+                                    number_of_frequencies,
+                                    system_settling_time,
+                                    output_amplitude_V,
+                                    bDither=False):
+        ''' Setup the requested vector network analysis (VNA).
+
+        Input Select
+        Bit 1 and 0 select between one of the four inputs, in that order:
+        ADCraw0
+        ADCraw1
+        DDC_inst_freq0
+        DDC_inst_freq1
+
+        Output Select
+        Bit 2 and 3 selects between one of the two ouputs, in that order:
+        DAC 0
+        DAC 1
+        DAC 2
+        DAC 2
+        '''
+        # print('Setting up system identification variables...')
+        self.system_settling_time = system_settling_time
+        self.first_modulation_frequency_in_hz = first_modulation_frequency_in_hz
+        self.last_modulation_frequency_in_hz = last_modulation_frequency_in_hz
+        self.number_of_frequencies = number_of_frequencies
+
+        # Num_samples computed below has to be a multiple of 64.  We back out how many frequencies we need to ask from this.
+        # print('number of frequencies before = %d' % self.number_of_frequencies)
+        num_samples_desired = self.number_of_frequencies*(2*64+32)/16
+        # num_samples_desired = int(round(num_samples_desired/64)*64) # enforces a multiple of 64. this was only necessary with the Opal Kelly interface
+        self.number_of_frequencies = int(num_samples_desired*16/(2*64+32))
+        if self.number_of_frequencies == 0:
+            self.number_of_frequencies = 1
+        # print('number of frequencies after = %d' % self.number_of_frequencies)
+        # self.number_of_frequencies = int(np.floor(self.number_of_frequencies/8)*8)    # Must be a multiple of eight to keep the data on DDR2 burst boundaries
+
+        self.modulation_frequency_step_in_hz = (
+                self.last_modulation_frequency_in_hz
+                -self.first_modulation_frequency_in_hz) / self.number_of_frequencies;
+        self.first_modulation_frequency = int(2**VNA_DDS_PHASE_ACCUM_N_BITS * self.first_modulation_frequency_in_hz/ADC_CLK_Hz)
+        self.modulation_frequency_step = int(2**VNA_DDS_PHASE_ACCUM_N_BITS * self.modulation_frequency_step_in_hz/ADC_CLK_Hz)
+        self.number_of_cycles_integration = self.compute_integration_time_for_syst_ident(self.system_settling_time, self.first_modulation_frequency_in_hz)
+        self.output_gain = int(output_amplitude_V / DAC_V_INT)
+        print("Output Gain {:}".format(self.output_gain))
+        self.input_and_output_mux_selector = (
+                set_bits(input_select, 0, bit_length=2)
+                +set_bits(output_select, 2, bit_length=2))
+        # Write Values to FPGA
+        self.dev.write_Zynq_register_uint32(
+                dpll_write_address(BUS_ADDR_number_of_cycles_integration),
+                self.number_of_cycles_integration)
+        self.dev.write_Zynq_register_uint64(
+                dpll_write_address(BUS_ADDR_first_modulation_frequency_lsbs),
+                dpll_write_address(BUS_ADDR_first_modulation_frequency_msbs),
+                self.first_modulation_frequency)
+        self.dev.write_Zynq_register_uint64(
+                dpll_write_address(BUS_ADDR_modulation_frequency_step_lsbs),
+                dpll_write_address(BUS_ADDR_modulation_frequency_step_msbs),
+                self.modulation_frequency_step)
+        self.dev.write_Zynq_register_uint16(
+                dpll_write_address(BUS_ADDR_number_of_frequencies),
+                self.number_of_frequencies)
+        self.dev.write_Zynq_register_uint32(
+                dpll_write_address(BUS_ADDR_output_gain),
+                self.output_gain)
+        self.dev.write_Zynq_register_uint16(
+                dpll_write_address(BUS_ADDR_input_and_output_mux_selector),
+                self.input_and_output_mux_selector)
+
+        # If we are setting up settings for a system identification, we need to stop the dither:
+        if bDither == False:
+            self.set_vna_mode(0, 1, 0)   # Set no dither, stop any dither, and sine wave output
+        # This makes sure that the output mode is 'sine wave' rather than 'square wave'
+        self.set_vna_mode(0, 0, 0)   # Set no dither, no stop, and sine wave output
+
+        # Need to also setup the write for enough samples that the VNA will put out:
+        # This needs to be done last, so that the next call to trigger_logger(self) works correctly.
+        Num_samples = self.number_of_frequencies*(2*64+32)/16 #TODO: figure out what these numbers are
+        # print('setup_system_identification(): Num_samples = %d' % Num_samples)
+        # print('Num_samples = %d' % Num_samples)
+        # print('self.number_of_frequencies = %d' % self.number_of_frequencies)
+        self.setup_write(SELECT_VNA, Num_samples)
+
+    def set_vna_mode(self, trigger_dither, stop_flag, bSquareWave):
+        register_value = (
+            set_bits(stop_flag, 0)
+            + set_bits(trigger_dither, 1)
+            + set_bits(bSquareWave, 2))
+        self.dev.write_Zynq_register_uint16(
+            dpll_write_address(BUS_ADDR_VNA_mode_control),
+            register_value)
+
+    ###########################################################################
+    #--- Read VNA Data:
+    ###########################################################################
+    #
+
+    def trigger_vna(self):
+        ''' Trigger the start of the vector network analyzer.'''
+        # Start writing data to the DDR2 RAM:
+        self.trigger_logger()
+        # Start the system identification process:
+        self.dev.write_Zynq_register_uint32(
+            dpll_write_address(BUS_ADDR_TRIG_SYSTEM_IDENTIFICATION),
+            0)
+
+    def read_vna_samples(self):
+        data_buffer = self.read_raw_bytes_from_logger()
         # convert to numpy array
         data_buffer = np.fromstring(data_buffer, dtype=np.uint8)
         # Interpret the samples as coming form the system identification VNA:
@@ -1739,16 +1711,16 @@ class DataAcquisition:
         # Thus each tested frequency will produce 2*64+32 bits (16 bytes).
         bytes_per_frequency_vna = int((2*64+32)/8);
         #repr_vna_all = np.reshape(rep, (-1, bytes_per_frequency_vna))    # note that this gives number_of_frequencies samples
-        print('self.number_of_frequencies = %d' % (self.number_of_frequencies))
-        print('bytes_per_frequency_vna = %d' % (bytes_per_frequency_vna))
-        print('len = %d' % (len(data_buffer)))
+        # print('self.number_of_frequencies = %d' % (self.number_of_frequencies))
+        # print('bytes_per_frequency_vna = %d' % (bytes_per_frequency_vna))
+        # print('len = %d' % (len(data_buffer)))
         if len(data_buffer) < (self.number_of_frequencies)*bytes_per_frequency_vna:
             # we don't have enough bytes for the whole array. only use the number of frequencies that will fit:
             actual_number_of_frequencies = int(np.floor(len(data_buffer)/bytes_per_frequency_vna))
             self.number_of_frequencies = actual_number_of_frequencies
 
         vna_raw_data = np.reshape(data_buffer[0:(self.number_of_frequencies)*bytes_per_frequency_vna], (self.number_of_frequencies, bytes_per_frequency_vna))    # note that this gives number_of_frequencies samples
-        print(vna_raw_data)
+        # print(vna_raw_data)
 
         vna_real = vna_raw_data[:, 0:8]
         vna_imag = vna_raw_data[:, 8:16]
@@ -1777,9 +1749,12 @@ class DataAcquisition:
         #  give a modulus equal to overall_gain.
         overall_gain = np.array(2.**(15-1) * self.output_gain * float((self.number_of_cycles_integration)), dtype=np.float) # the additionnal divide by two is because cos(x) = 1/2*exp(jx)+1/2*exp(-jx)
         overall_gain = 2.**(15-1) * self.output_gain * integration_time.astype(np.float) # the additionnal divide by two is because cos(x) = 1/2*exp(jx)+1/2*exp(-jx)
-#        print(self.number_of_cycles_integration)
+        # print("Overal Gain {:}".format(overall_gain))
+        # print("Output Gain {:}".format(self.output_gain))
+        # print("Integration Time {:}".format(integration_time))
+        print(self.number_of_cycles_integration)
 #        overall_gain = 1
-#        print('TODO: Remove this line! overallgain = 1')
+        # print('TODO: Remove this line! overallgain = 1')
         transfer_function_real = (integrator_real.astype(np.float)) / (overall_gain)
         transfer_function_imag = (integrator_imag.astype(np.float)) / (overall_gain)
         transfer_function_complex = transfer_function_real + 1j * transfer_function_imag
@@ -1790,61 +1765,214 @@ class DataAcquisition:
         return (transfer_function_complex, frequency_axis)
 
     ###########################################################################
-    #--- LEDs and Status Flags:
+    #--- VNA Helper Functions:
     ###########################################################################
     #
 
-    #--------------------------------------------------------------------------
-    # LEDs and Status Flags Helper Functions:
+    def compute_integration_time_for_syst_ident(self, system_settling_time, first_modulation_frequency_in_hz):
+        ''' Compute the time needed to complete the requested vector network
+        analysis (VNA)
+
+        There are four constraints on this value:
+            - First of all, the output rate of the block depends on this value
+            so it has to be kept under some limit (one block of data every
+            ~20 clock cycles)
+            - The second is the settling time of the impulse response of the
+            system to be identified
+            - The third is that we need to integrate long enough to reject the
+            tone at twice the modulation frequency (after the multiplier)
+            - The fourth is the overall SNR, which depends on the modulation
+            amplitude and how much noise there is already on the system output.
+            This last one is easy to handle; the measured transfer function
+            will be very noisy if we don't integrate long enough
+        '''
+        #
+        integration_time_s = int(max((
+            20,
+            system_settling_time*ADC_CLK_Hz,
+            1/(first_modulation_frequency_in_hz)*ADC_CLK_Hz)))
+        return integration_time_s
+
+    def get_system_identification_wait_time(self):
+        return 1.1*2*self.number_of_cycles_integration*self.number_of_frequencies/ADC_CLK_Hz
+
+    def wait_for_system_identification(self):
+        # print(1.1*2*self.number_of_cycles_integration*self.number_of_frequencies/self.ADC_CLK_Hz)
+        time.sleep(self.get_system_identification_wait_time())
+
+    ###########################################################################
+    #--- Read/Write Data Logger Settings:
+    ###########################################################################
     #
 
-    def extractBit(self, value, N_bit):
+    def setup_write(self, selector, Num_samples):
+        if Num_samples > MAX_SAMPLES_READ_BUFFER:
+            Num_samples = MAX_SAMPLES_READ_BUFFER
+        self.Num_samples_write = int(Num_samples)
+        self.Num_samples_read = self.Num_samples_write
 
-        single_bit = (value >> N_bit) % 2
-        return single_bit
+        # Select which data bus to put in the RAM:
+        self.last_selector = selector
+        self.dev.write_Zynq_register_uint16(
+            dpll_write_address(BUS_ADDR_MUX_SELECTORS),
+            self.last_selector)
+
+    def setup_ADC0_write(self, Num_samples):
+        self.setup_write(SELECT_ADC0, Num_samples)
+
+    def setup_ADC1_write(self, Num_samples):
+        self.setup_write(SELECT_ADC1, Num_samples)
+
+    def setup_DDC0_write(self, Num_samples):
+        self.setup_write(SELECT_DDC0, Num_samples)
+
+    def setup_DDC1_write(self, Num_samples):
+        self.setup_write(SELECT_DDC1, Num_samples)
+
+    def setup_counter_write(self, Num_samples):
+        self.setup_write(SELECT_COUNTER, Num_samples)
+
+    def setup_DAC0_write(self, Num_samples):
+        self.setup_write(SELECT_DAC0, Num_samples)
+
+    def setup_DAC1_write(self, Num_samples):
+        self.setup_write(SELECT_DAC1, Num_samples)
+
+    def setup_DAC2_write(self, Num_samples):
+        self.setup_write(SELECT_DAC2, Num_samples)
+
+    ###########################################################################
+    #--- Read Data Logger Data:
+    ###########################################################################
+    #
+
+    def trigger_logger(self):
+        ''' Trigger writing to the data logger.'''
+        # Start writing data to the BRAM data logger:
+        self.dev.write_Zynq_register_uint32(BUS_ADDR_TRIG_WRITE, 0) # address outside of "dpll_wrapper"
+
+    def read_raw_bytes_from_logger(self):
+        bytes_per_sample = 2 # 16 bit values
+        Num_bytes_read = self.Num_samples_read*bytes_per_sample
+
+        data_buffer = self.dev.read_Zynq_buffer_16(self.Num_samples_read)
+
+        if Num_bytes_read != len(data_buffer):
+            print('Error: did not receive the expected number of bytes. expected: %d, Received: %d' % (Num_bytes_read, len(data_buffer)))
+
+        return data_buffer
+
+    def get_ref_sin_cos(self):
+        """
+        The values in this register are automatically synchronized to the
+        first value of the ADC data logger traces.
+        """
+        (ref_sin, ref_cos) = self.dev.read_Zynq_register_2x_int16(
+            legacy_read_address(BUS_ADDR_REF_SIN_COS))
+        return (ref_sin, ref_cos)
+
+    def read_adc_samples(self):
+        data_buffer = self.read_raw_bytes_from_logger()
+        samples_out_int = np.frombuffer(data_buffer, dtype=np.int16)
+        if len(samples_out_int) == 0:
+            ref_exp = np.array([1.0,])
+            return (samples_out_int, ref_exp)
+
+        if (self.last_selector == 0 or self.last_selector == 1):
+            # ADC 0 or 1
+            (ref_sin, ref_cos) = self.get_ref_sin_cos()
+            ref_exp = ref_cos + 1j*ref_sin
+            samples_out_V = ADC_V_INT * samples_out_int
+        else:
+            # Other (DAC0, DAC1 or DAC2): there is no ref exp in the samples
+            ref_exp = 1 + 1j*0
+            samples_out_V = DAC_V_INT * samples_out_int
+        # Now ref_exp contains the reference phasor, aligned with the first sample that this function will return
+        return (samples_out_int, samples_out_V, ref_exp)
+
+    def read_dac_samples(self):
+        data_buffer = self.read_raw_bytes_from_logger()
+        samples_out_int = np.frombuffer(data_buffer, dtype=np.int16)
+        samples_out_V = DAC_V_INT * samples_out_int
+        return (samples_out_int, samples_out_V)
+
+    def read_ddc_samples(self):
+        # TODO: scale by type of error signal
+        data_buffer = self.read_raw_bytes_from_logger()
+        samples_out_int = np.frombuffer(data_buffer, dtype=np.int16)
+        # The samples represent instantaneous frequency as: samples_out_int = diff(phi)/(2*pi*fs) * 2**12, where phi is the phase in radians
+        inst_freq = DDC_FREQ_HZ_INT * (samples_out_int.astype(dtype=float))
+        # print('Mean frequency error = %f Hz' % np.mean(inst_freq))
+        return inst_freq
+
+    def read_dbg_counter_samples(self):
+        """Read debuging counter"""
+        data_buffer = self.read_raw_bytes_from_logger()
+        # convert to numpy array
+        data_buffer = np.fromstring(data_buffer, dtype=np.uint8)
+
+        bytes_per_sample = 2
+        data_buffer_reshaped = np.reshape(data_buffer, (-1, bytes_per_sample))
+        # convert_4bytes_unsigned = np.array((2**(2*8), 2**(3*8), 2**(0*8), 2**(1*8)))
+        convert_2bytes_signed = np.array((2**(0*8), 2**(1*8)), dtype=np.int16)
+        samples_out_int         = np.dot(data_buffer_reshaped[:, :].astype(np.int16), convert_2bytes_signed)
+        return samples_out_int
+
+    ###########################################################################
+    #--- Data Logger Helper Functions:
+    ###########################################################################
+    #
+
+    def wait_for_logger(self):
+        write_delay = self.Num_samples_write / ADC_CLK_Hz
+        # print('Waiting for the BRAM to fill up... (%f secs)' % ((write_delay)))
+        time.sleep(write_delay)
+        # print('Done!')
+
+    ###########################################################################
+    #--- Read/Write LED and Status Flags:
+    ###########################################################################
+    #
 
     #--------------------------------------------------------------------------
     # Read/Write LEDs and Status Flags Parameters:
     #
 
-    def readLEDs(self):
+    def read_LEDs(self):
 
-        # We first need to check if the fifo has enough samples to send us:
-        # status_flags = self.dev.get_wire_out_value(self.ENDPOINT_STATUS_FLAGS_OUT) # get value from dev object into our script
         status_flags = self.dev.read_Zynq_register_uint32(
-                dpll_write_address(BUS_ADDR_STATUS_FLAGS)) # use write address, legacy "Opal Kelly" I/O
-        # print(status_flags)
+            legacy_read_address(BUS_ADDR_STATUS_FLAGS))
 
-        LED_G0        = self.extractBit(status_flags, 4)
-        LED_R0        = self.extractBit(status_flags, 5)
+        LED_G0        = self.extract_bit(status_flags, 4)
+        LED_R0        = self.extract_bit(status_flags, 5)
 
-        LED_G1        = self.extractBit(status_flags, 6)
-        LED_R1        = self.extractBit(status_flags, 7)
+        LED_G1        = self.extract_bit(status_flags, 6)
+        LED_R1        = self.extract_bit(status_flags, 7)
 
-        LED_G2        = self.extractBit(status_flags, 8)
-        LED_R2        = self.extractBit(status_flags, 9)
+        LED_G2        = self.extract_bit(status_flags, 8)
+        LED_R2        = self.extract_bit(status_flags, 9)
 
         return (LED_G0, LED_R0, LED_G1, LED_R1, LED_G2, LED_R2)
 
-    def readStatusFlags(self):
+    def read_status_flags(self):
 
-        # We first need to check if the fifo has enough samples to send us:
-
-        # status_flags = self.dev.get_wire_out_value(self.ENDPOINT_STATUS_FLAGS_OUT) # get value from dev object into our script
         status_flags = self.dev.read_Zynq_register_uint32(
-                dpll_write_address(BUS_ADDR_STATUS_FLAGS)) # use write address, legacy "Opal Kelly" I/O
-#        print(status_flags)
-        output0_has_data        = (self.extractBit(status_flags, 0) == 0)
-        output1_has_data        = (self.extractBit(status_flags, 1) == 0)
-        PipeA1FifoEmpty         = self.extractBit(status_flags, 2)
-        crash_monitor_has_data  = self.extractBit(status_flags, 3)
+            legacy_read_address(BUS_ADDR_STATUS_FLAGS))
 
-#        output0_has_data = ((status_flags & (1 << 0)) >> 0 == 0)
-#        output1_has_data = ((status_flags & (1 << 1)) >> 1 == 0)
-#        PipeA1FifoEmpty  = ((status_flags & (1 << 2)) >> 2 == 1)
-#        PipeA1FifoEmpty  = ((status_flags & (1 << 2)) >> 2 == 1)
+        output0_has_data        = (self.extract_bit(status_flags, 0) == 0)
+        output1_has_data        = (self.extract_bit(status_flags, 1) == 0)
+        PipeA1FifoEmpty         = self.extract_bit(status_flags, 2)
+        crash_monitor_has_data  = self.extract_bit(status_flags, 3)
 
         return (output0_has_data, output1_has_data, PipeA1FifoEmpty, crash_monitor_has_data)
+
+    #--------------------------------------------------------------------------
+    # LEDs and Status Flags Helper Functions:
+    #
+
+    def extract_bit(self, value, N_bit):
+        single_bit = (value >> N_bit) % 2
+        return single_bit
 
 
 #%% Red Pitaya Constants
@@ -1928,13 +2056,14 @@ FREE_CS =           (7 << (6-1)*4 ) # not actively used
 # Internal DPLL offset to Zynq Compatible Offset Address Multiplier:
 DPLL_MLTP = 4
 
+def dpll_write_address(dpll_addr_offset):
+    bus_address = DPLL_CS + DPLL_MLTP*dpll_addr_offset
+    return bus_address
+legacy_read_address = dpll_write_address
+
 def dpll_read_address(dpll_addr_offset):
     #TODO: default value for uninitialized RAM is 0xEFFFFFFF...
     bus_address = DPLL_READ_CS + DPLL_MLTP*dpll_addr_offset
-    return bus_address
-
-def dpll_write_address(dpll_addr_offset):
-    bus_address = DPLL_CS + DPLL_MLTP*dpll_addr_offset
     return bus_address
 
 #--------------------------------------------------------------------------
@@ -2044,7 +2173,6 @@ BUS_ADDR_dither_mode_auto = [0x8104, 0x8204, 0x8304] # For reconnection purpose
 #
 
 # VNA Address Offsets:
-BUS_ADDR_TRIG_SYSTEM_IDENTIFICATION                 = 0x0042
 BUS_ADDR_number_of_cycles_integration               = 0x5000
 BUS_ADDR_first_modulation_frequency_lsbs            = 0x5001
 BUS_ADDR_first_modulation_frequency_msbs            = 0x5002
@@ -2054,6 +2182,8 @@ BUS_ADDR_number_of_frequencies                      = 0x5005
 BUS_ADDR_output_gain                                = 0x5006
 BUS_ADDR_input_and_output_mux_selector              = 0x5007
 BUS_ADDR_VNA_mode_control                           = 0x5008
+BUS_ADDR_TRIG_SYSTEM_IDENTIFICATION                 = 0x5009
+
 
 # VNA Direct Digital Synthesis (DDS) Local Oscilator Constants:
 VNA_DDS_PHASE_ACCUM_N_BITS = 48 #TODO: make these distinct IPs from the DDC
@@ -2074,7 +2204,7 @@ BUS_ADDR_dac2_limit_high = 0x6104 # not actively used
 #
 
 # PWM DAC Address Offsets:
-BUS_ADDR_PWM0                                       = 0x6621
+BUS_ADDR_PWM0 = 0x6621
 
 #--------------------------------------------------------------------------
 # Frequency Counters:
@@ -2102,15 +2232,15 @@ BUS_ADDR_freq_residuals0_threshold = 0x8410
 BUS_ADDR_MUX_SELECTORS  = 0x0003
 
 # Data Logger Multiplexer Constants:
-SELECT_ADC0             = 0
-SELECT_ADC1             = 1
-SELECT_DDC0             = 2
-SELECT_DDC1             = 3
-SELECT_VNA              = 4
-SELECT_COUNTER          = 5
-SELECT_DAC0             = 6
-SELECT_DAC1             = 7
-SELECT_DAC2             = 8
+SELECT_ADC0             = 0x0
+SELECT_ADC1             = 0x1
+SELECT_DDC0             = 0x2
+SELECT_DDC1             = 0x3
+SELECT_VNA              = 0x4
+SELECT_COUNTER          = 0x5
+SELECT_DAC0             = 0x6
+SELECT_DAC1             = 0x7
+SELECT_DAC2             = 0x8
 SELECT_CRASH_MONITOR    = 2**4
 SELECT_IN10             = 2**4 + 2**3
 
@@ -2142,7 +2272,10 @@ BUS_ADDR_FIFO_EMPTY = 0x0038 # not actively used
 BUS_ADDR_FIFO_DOUT = 0x0039 # not actively used
 BUS_ADDR_FIFO_COUNT = 0x0040 # not actively used
 BUS_ADDR_FIFO_WRT_ENABLE = 0x0041 # not actively used
-BUS_ADDR_FIFO_RESET = 0x0042 # !!!: Conflict with BUS_ADDR_TRIG_SYSTEM_IDENTIFICATION
+BUS_ADDR_FIFO_RESET = 0x0042 # not actively used
+
+# Reference Sin and Cos Offset:
+BUS_ADDR_REF_SIN_COS = 0x0050
 
 ###########################################################################
 #--- Data Logger:

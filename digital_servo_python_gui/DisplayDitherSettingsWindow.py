@@ -12,8 +12,6 @@ from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 import weakref
 from digital_servo import SuperLaserLand
-#from DisplayTransferFunctionWindow import DisplayTransferFunctionWindow
-
 
 class DisplayDitherSettingsWindow(QtGui.QWidget):
 
@@ -122,8 +120,6 @@ class DisplayDitherSettingsWindow(QtGui.QWidget):
             output_amplitude = 1
         if output_amplitude <= 0:
             output_amplitude = 0
-            mode_auto = 0
-            bEnableDither = 0
 
         try:
             modulation_frequency_in_hz = float(self.qedit_dither_freq.text())
@@ -133,6 +129,8 @@ class DisplayDitherSettingsWindow(QtGui.QWidget):
 
         try:
             integration_time_in_seconds = float(self.qedit_integration_time.text())
+            if integration_time_in_seconds < 1e-6:
+                integration_time_in_seconds = 1e-6
         except:
             integration_time_in_seconds = 0.1
             pass

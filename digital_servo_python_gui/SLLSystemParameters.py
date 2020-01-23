@@ -65,7 +65,7 @@ class SLLSystemParameters():
         self.tree = ET.parse(strFilename)
         self.root = self.tree.getroot()
 
-        # we used to do error checking at this level, but now it is implemented one layer higher in the hierarchy (currently in XEM_GUI3.py)
+        # we used to do error checking at this level, but now it is implemented one layer higher in the hierarchy (currently in main_gui.py)
         # try:
             # self.tree = ET.parse(strFilename)
             # self.root = self.tree.getroot()
@@ -89,13 +89,13 @@ class SLLSystemParameters():
         # Set the DAC output limits:
         limit_low = float(self.getValue('Output_limits_low', 'DAC0'))    # the limit is in volts
         limit_high = float(self.getValue('Output_limits_high', 'DAC0'))    # the limit is in volts
-        self.sll.dac.set_dac_limits(0, limit_low, limit_high)
+        self.sll.dac.set_dac_limits_V(0, limit_low, limit_high)
         limit_low = float(self.getValue('Output_limits_low', 'DAC1'))    # the limit is in volts
         limit_high = float(self.getValue('Output_limits_high', 'DAC1'))    # the limit is in volts
-        self.sll.dac.set_dac_limits(1, limit_low, limit_high)
+        self.sll.dac.set_dac_limits_V(1, limit_low, limit_high)
         limit_low = float(self.getValue('Output_limits_low', 'DAC2'))    # the limit is in volts
         limit_high = float(self.getValue('Output_limits_high', 'DAC2'))    # the limit is in volts
-        self.sll.dac.set_dac_limits(2, limit_low, limit_high)
+        self.sll.dac.set_dac_limits_V(2, limit_low, limit_high)
         ##
         ## HB, 4/27/2015, Added PWM support on DOUT0
         ##

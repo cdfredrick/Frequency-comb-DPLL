@@ -895,7 +895,7 @@ dither_lockin_wrapper # (
 //      h5006 - output_gain
 //      h5007 - input_and_output_mux_selector
 //      h5008 - mode control signals (stop, trigger_dither, bSquareWave)
-//
+//      h5009 - VNA trigger
 
 wire signed [16-1:0] vna_output_to_dac0, vna_output_to_dac1, vna_output_to_dac2;
 wire signed [16-1:0] VNA_output_to_logger;
@@ -907,7 +907,7 @@ wire trigger_vna_identification; // Trigger Vector Network Analyzer (VNA)
 parallel_bus_register_32bits_or_less # (
     .REGISTER_SIZE(8),
     .REGISTER_DEFAULT_VALUE(32'b0),
-    .ADDRESS(16'h0042)
+    .ADDRESS(16'h5009)
 ) parallel_bus_register_trigger_identification (
     .clk(clk1), 
     .bus_strobe(cmd_trig), 
@@ -1156,6 +1156,7 @@ dual_type_frequency_counter dual_type_frequency_counter_inst2 (
 //
 
 wire    [16-1:0]         selector;
+wire signed [16-1:0]    ref_cosine_0, ref_sine_0, ref_cosine_1, ref_sine_1, ref_sin, ref_cos;
 
 // counter connected to a free input on the multiplexer, helps for debugging
 reg     [32-1:0]  debugging_counter;
@@ -1187,17 +1188,29 @@ multiplexer_NbitsxMsignals_to_Nbits # (
     .N_bits_per_signal(17)  // 16 bits per signal + clock enable in MSB : simply put a static 1'b1 if signal is always valid
 ) multiplexer_NbitsxMsignals_to_Nbits_inst (
     .clk(clk1),
-    .in0({1'b1, ADC0_multiplexed}), 
-    .in1({1'b1, ADC1_multiplexed}), 
-    .in2({1'b1, {6{inst_frequency0[10-1]}}, inst_frequency0}), // Inst freq after DDC 0, sign extended to 16 bits
-    .in3({1'b1, {6{inst_frequency1[10-1]}}, inst_frequency1}), // Error signal into PLL 1, sign extended to 16 bits
-    .in4({VNA_output_to_logger_clk_enable, VNA_output_to_logger}), // VNA output
-    .in5({1'b1, debugging_counter[16-1:0]}),  // counter, simply for debugging the DDR2 Logger/USB link
-    .in6({1'b1, DACout0[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
-    .in7({1'b1, DACout1[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
-    .in8({1'b1, {6{inst_frequency2[10-1]}}, inst_frequency2}), // Inst freq after DDC 1, sign extended to 16 bits
-    .in9({1'b0, 8'b0}),
-    .selector(selector[4:0]), 
+    // Multiplexer Inputs
+    .in0_adc_0({LoggerIsWriting, ADCraw0}), 
+    .in1_adc_1({LoggerIsWriting, ADCraw1}), 
+    .in2_err_sig_0({LoggerIsWriting, {6{inst_frequency0[10-1]}}, inst_frequency0}), // Inst freq after DDC 0, sign extended to 16 bits
+    .in3_err_sig_1({LoggerIsWriting, {6{inst_frequency1[10-1]}}, inst_frequency1}), // Error signal into PLL 1, sign extended to 16 bits
+    .in4_vna({VNA_output_to_logger_clk_enable, VNA_output_to_logger}), // VNA output
+    .in5({LoggerIsWriting, debugging_counter[16-1:0]}),  // counter, simply for debugging the DDR2 Logger/USB link
+    .in6_dac_0({LoggerIsWriting, DACout0[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
+    .in7_dac_1({LoggerIsWriting, DACout1[SIGNAL_SIZE-1:SIGNAL_SIZE-16]}), 
+    .in8_err_sig_2({LoggerIsWriting, {6{inst_frequency2[10-1]}}, inst_frequency2}), // Inst freq after DDC 1, sign extended to 16 bits
+    .in9({LoggerIsWriting, 8'b0}),
+    .in10({LoggerIsWriting, debugging_counter[16-1:0]}),
+    // Selector
+    .selector(selector[4:0]),
+    // Reference Signals In
+    .ref_cosine_0(ref_cosine_0), 
+    .ref_sine_0(ref_sine_0), 
+    .ref_cosine_1(ref_cosine_1), 
+    .ref_sine_1(ref_sine_1),
+    // Reference Signals Out
+    .ref_sin_out(ref_sin),
+    .ref_cos_out(ref_cos),
+    // Multiplexer Out
     .selected_output({LoggerData_clk_enable, LoggerData})
 );
 
@@ -1211,21 +1224,20 @@ multiplexer_NbitsxMsignals_to_Nbits # (
 //
 
 // Collection of wires used to add auxilary data to the stream going to the Data logger.
-wire signed [16-1:0]    ref_cosine_0, ref_sine_0, ref_cosine_1, ref_sine_1;
-wire signed [16-1:0]    ADC0_multiplexed, ADC1_multiplexed;
+//wire signed [16-1:0]    ADC0_multiplexed, ADC1_multiplexed;
 
-aux_data_mux aux_data_mux_inst (
-    .clk(clk1), 
-    .write_mode(LoggerIsWriting), 
-    .ADC0(ADCraw0), 
-    .ADC1(ADCraw1), 
-    .ref_cosine_0(ref_cosine_0), 
-    .ref_sine_0(ref_sine_0), 
-    .ref_cosine_1(ref_cosine_1), 
-    .ref_sine_1(ref_sine_1), 
-    .ADC0_multiplexed(ADC0_multiplexed), 
-    .ADC1_multiplexed(ADC1_multiplexed)
-);
+//aux_data_mux aux_data_mux_inst (
+//    .clk(clk1), 
+//    .write_mode(LoggerIsWriting), 
+//    .ADC0(ADCraw0), 
+//    .ADC1(ADCraw1), 
+//    .ref_cosine_0(ref_cosine_0), 
+//    .ref_sine_0(ref_sine_0), 
+//    .ref_cosine_1(ref_cosine_1), 
+//    .ref_sine_1(ref_sine_1), 
+//    .ADC0_multiplexed(ADC0_multiplexed), 
+//    .ADC1_multiplexed(ADC1_multiplexed)
+//);
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1386,10 +1398,13 @@ Status_LED_driver # (
 //          h0034 - counter1_out_reg[64-1:32], MSBs
 //          h0035 - DAC0_out_reg
 //          h0036 - DAC1_out_reg
+//      h0050 - {ref_sin, ref_cos} (synchronized to the start of the ADC data logger)
+// FIFO Addresses:
+//      FIFO Read:
 //      h0038 - fifo_prog_empty (<10 words left)
 //      h0039 - fifo_dout
 //      h0040 - fifo_data_count_max
-// Write Addresses:
+//      FIFO Write:
 //      h0041 - bWritesEnabled (write counter for I/O test)
 //      h0042 - fifo_srst (reset fifio)
 //
@@ -1438,6 +1453,8 @@ registers_read registers_read_inst (
     .counter1_out(counter1_out),
     .DAC0_out({  {16{DACout0[15]}} , DACout0}),   // manual sign extension from 16 to 32 bits
     .DAC1_out({  {16{DACout1[15]}} , DACout1}),
+    // Reference sin and cos synched to the start of the ADC Data Logger trace
+    .ref_sin_cos({ref_sin, ref_cos}),
 
     // internal configuration bus
     .cmd_addr        (  cmd_addr                       ),  // address

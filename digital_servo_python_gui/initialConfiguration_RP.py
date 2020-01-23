@@ -318,12 +318,10 @@ class initialConfiguration(QtGui.QDialog):
 
         # close UDP discovery server:
         self.killTimer(self.timerID)    # is it guaranteed that no timerEvent will be called after this line? because we delete our reference to udp_discovery, which is used in the timer event
-        del self.udp_discovery
+        # del self.udp_discovery
 
         self.close()
-        #self.controller.pushDefaultValues(self.strSelectedIP)
 
-        #self.controller.main()
 
     def programFPGAClicked(self):
         self.readSelectedFPGA()

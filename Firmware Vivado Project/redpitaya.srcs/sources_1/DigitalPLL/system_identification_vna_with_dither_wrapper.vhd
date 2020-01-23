@@ -195,40 +195,40 @@ begin
 			if trigger_last = '0' and cmd_trig = '1' and cmd_addr(15 downto 15-4+1) = x"5" then
 				-- Address decoder:
 				case cmd_addr(3 downto 0) is
-					when x"0" =>
+					when x"0" => -- x"5000"
 						-- Load number_of_cycles_integration (32 bits)
 						number_of_cycles_integration <= cmd_data2 & cmd_data1;
 						
-					when x"1" =>
+					when x"1" => --x"5001"
 						-- Load first_modulation_frequency (first 32 LSBs of 48 total bits)
 						first_modulation_frequency(31 downto 0) <= cmd_data2 & cmd_data1;
 						
-					when x"2" =>
+					when x"2" => --x"5002"
 						-- Load first_modulation_frequency (last 16 MSBs of 48 total bits)
 						first_modulation_frequency(47 downto 32) <= cmd_data1;
 						
-					when x"3" =>
+					when x"3" => --x"5003"
 						-- Load modulation_frequency_step (first 32 LSBs of 48 total bits)
 						modulation_frequency_step(31 downto 0) <= cmd_data2 & cmd_data1;
 						
-					when x"4" =>
+					when x"4" => --x"5004"
 						-- Load first_modulation_frequency (last 16 MSBs of 48 total bits)
 						modulation_frequency_step(47 downto 32) <= cmd_data1;
 						
-					when x"5" =>
+					when x"5" => --x"5005"
 						-- Load number_of_frequencies (16 bits)
 						number_of_frequencies <= cmd_data1(15 downto 0);
 						led_debug <= cmd_data1(5 downto 0);
 						
-					when x"6" =>
+					when x"6" => --x"5006"
 						-- Load output_gain (18 bits)
 						output_gain <= cmd_data2(1 downto 0) & cmd_data1;
 						
-					when x"7" =>
+					when x"7" => --x"5007"
 						-- Load input_and_output_mux_selector (4 bits)
 						input_and_output_mux_selector <= cmd_data1(input_and_output_mux_selector'range);
 						
-					when x"8" =>
+					when x"8" => --x"5008"
 						-- Load mode control binary signals (3 bits)
 						stop <= cmd_data1(0);
 						trigger_dither <= cmd_data1(1);

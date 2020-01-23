@@ -210,6 +210,7 @@ begin
     -- High Pass Filter:
     --------------------
     -- First-order, high-pass, IIR filter, about ~10 kHz of cutoff frequency on the input data:
+    -- high pass should not be needed. Mixing will move DC to the ref freq, which will then be low passed away.
     first_order_IIR_highpass_filter_inst: entity work.first_order_IIR_highpass_filter 
     PORT MAP (
         clk      => clk,
@@ -222,11 +223,13 @@ begin
         if reference_frequency = to_signed(0, reference_frequency'length) then
             data_input_to_mult <= data_input;
         else
-            data_input_to_mult <= data_input_highpassed;
+            data_input_to_mult <= data_input; --data_input_highpassed; 
         end if;
     end process;
     
-    process (clk) -- register added for timing closure
+    -- register added for timing closure
+    -- For proper behavior of the data logger module, the input adc signal should be synchronous with the output reference signal
+    process (clk)
 	begin
 		if rising_edge(clk) then
 			data_input_to_mult_reg <= data_input_to_mult;

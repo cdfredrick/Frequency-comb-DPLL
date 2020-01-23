@@ -17,17 +17,22 @@ from user_friendly_QLineEdit import user_friendly_QLineEdit
 # stuff for Python 3 port
 import pyqtgraph as pg
 
+from digital_servo import SuperLaserLand
+
 class LoopFiltersUI(Qt.QWidget):
 
     MINIMUM_GAIN_DISPLAY = 10**(-120/20)
 
-    def __init__(self, sl, filter_number=0, bDisplayLockChkBox=True):
+    def __init__(self, sll, filter_number=0, bDisplayLockChkBox=True):
+        assert isinstance(sll, SuperLaserLand)
+
         super(LoopFiltersUI, self).__init__()
 #        print('LoopFiltersUI::__init__(): Entering')
 
-        # We need sl here because we need to pass it to the pll object, and we need ADC_CLK_Hz to set the correct loop filter gain, because the integrators transfer function depends on that ADC_CLK_Hz
-        self.sl = weakref.proxy(sl)
+        # We need sll here because we need to pass it to the pll object, and we need ADC_CLK_Hz to set the correct loop filter gain, because the integrators transfer function depends on that ADC_CLK_Hz
+        self.sll = weakref.proxy(sll)
         self.filter_number = filter_number
+        self.clock_freq_Hz = self.sll.dev.clock_freq_Hz()
         # All the gains here are normalized to the DC, open-loop gain of the overall system:
         self.kc = 1
         self.bDisplayLockChkBox = bDisplayLockChkBox
@@ -595,19 +600,19 @@ class LoopFiltersUI(Qt.QWidget):
 
     def getLimits(self):
 
-        (kp_min, kp_max) = self.sl.loop_filter.p_limits(self.filter_number)
+        (kp_min, kp_max) = self.sll.loop_filter.p_limits(self.filter_number)
         self.kp_min = kp_min
         self.kp_max = kp_max
-        (ki_min, ki_max) = self.sl.loop_filter.i_limits(self.filter_number)
+        (ki_min, ki_max) = self.sll.loop_filter.i_limits(self.filter_number)
         self.ki_min = ki_min
         self.ki_max = ki_max
-        (kii_min, kii_max) = self.sl.loop_filter.ii_limits(self.filter_number)
+        (kii_min, kii_max) = self.sll.loop_filter.ii_limits(self.filter_number)
         self.kii_min = kii_min
         self.kii_max = kii_max
-        (kd_min, kd_max) = self.sl.loop_filter.d_limits(self.filter_number)
+        (kd_min, kd_max) = self.sll.loop_filter.d_limits(self.filter_number)
         self.kd_min = kd_min
         self.kd_max = kd_max
-        (kdf_min, kdf_max) = self.sl.loop_filter.df_limits(self.filter_number)
+        (kdf_min, kdf_max) = self.sll.loop_filter.df_limits(self.filter_number)
         self.kdf_min = kdf_min
         self.kdf_max = kdf_max
 
@@ -628,26 +633,26 @@ class LoopFiltersUI(Qt.QWidget):
                 kp_min_dB = 20*np.log10(self.kp_min * self.kc)
 
             kp_max_dB = 20*np.log10(self.kp_max * self.kc)
-            fi_min = self.ki_min * self.kc / (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            fi_max = self.ki_max * self.kc / (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            fii_min = self.kii_min *self.kc / fi / (2*np.pi/self.sl.dev.ADC_CLK_Hz)**2
-            fii_max = self.kii_max *self.kc / fi / (2*np.pi/self.sl.dev.ADC_CLK_Hz)**2
-            fd_min = self.kd_min * self.kc * fd * (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            fd_max = self.kd_max * self.kc * fd * (2*np.pi/self.sl.dev.ADC_CLK_Hz)
+            fi_min = self.ki_min * self.kc / (2*np.pi/self.clock_freq_Hz)
+            fi_max = self.ki_max * self.kc / (2*np.pi/self.clock_freq_Hz)
+            fii_min = self.kii_min *self.kc / fi / (2*np.pi/self.clock_freq_Hz)**2
+            fii_max = self.kii_max *self.kc / fi / (2*np.pi/self.clock_freq_Hz)**2
+            fd_min = self.kd_min * self.kc * fd * (2*np.pi/self.clock_freq_Hz)
+            fd_max = self.kd_max * self.kc * fd * (2*np.pi/self.clock_freq_Hz)
         else:
             if self.kp_min * self.kc == 0.0:
                 kp_min_dB = float('-inf')
             else:
                 kp_min_dB = 20*np.log10(self.kp_min * self.kc)
             kp_max_dB = 20*np.log10(self.kp_max * self.kc)
-            fi_min = self.ki_min * self.kc/10**(kp/20) / (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            fi_max = self.ki_max * self.kc/10**(kp/20) / (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            fii_min = self.kii_min *self.kc/10**(kp/20) / fi / (2*np.pi/self.sl.dev.ADC_CLK_Hz)**2
-            fii_max = self.kii_max *self.kc/10**(kp/20) / fi / (2*np.pi/self.sl.dev.ADC_CLK_Hz)**2
-            fd_min = self.kd_min * self.kc/10**(kp/20) * fd * (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            fd_max = self.kd_max * self.kc/10**(kp/20) * fd * (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-        fdf_min = (self.sl.dev.ADC_CLK_Hz*self.kdf_min)/(2*np.pi)
-        fdf_max = (self.sl.dev.ADC_CLK_Hz*self.kdf_max)/(2*np.pi)
+            fi_min = self.ki_min * self.kc/10**(kp/20) / (2*np.pi/self.clock_freq_Hz)
+            fi_max = self.ki_max * self.kc/10**(kp/20) / (2*np.pi/self.clock_freq_Hz)
+            fii_min = self.kii_min *self.kc/10**(kp/20) / fi / (2*np.pi/self.clock_freq_Hz)**2
+            fii_max = self.kii_max *self.kc/10**(kp/20) / fi / (2*np.pi/self.clock_freq_Hz)**2
+            fd_min = self.kd_min * self.kc/10**(kp/20) * fd * (2*np.pi/self.clock_freq_Hz)
+            fd_max = self.kd_max * self.kc/10**(kp/20) * fd * (2*np.pi/self.clock_freq_Hz)
+        fdf_min = (self.clock_freq_Hz*self.kdf_min)/(2*np.pi)
+        fdf_max = (self.clock_freq_Hz*self.kdf_max)/(2*np.pi)
 
         self.qedit_kp.setToolTip('Proportional gain in dB: [{:.2f}, {:.2f}]'.format(kp_min_dB, kp_max_dB))
         self.qedit_fi.setToolTip('Integrator cross-over frequency in Hz: [{:.2e}, {:.2e}]'.format(fi_min, fi_max))
@@ -662,24 +667,24 @@ class LoopFiltersUI(Qt.QWidget):
             # I is relative to 1/kc
             # all the values here are relative to the open-loop DC gain of the system, self.kc:
             P_gain = 10**(kp/20)/self.kc
-            I_gain = 1/self.kc * fi * (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            II_gain = 1/self.kc * fi * fii * (2*np.pi/self.sl.dev.ADC_CLK_Hz)**2
+            I_gain = 1/self.kc * fi * (2*np.pi/self.clock_freq_Hz)
+            II_gain = 1/self.kc * fi * fii * (2*np.pi/self.clock_freq_Hz)**2
             if fd == 0.0:
                 D_gain = 0.0
             else:
-                D_gain = 1/self.kc * self.sl.dev.ADC_CLK_Hz / (2*np.pi*fd)
+                D_gain = 1/self.kc * self.clock_freq_Hz / (2*np.pi*fd)
         else:
             # I is relative to kp/kc
             # all the values here are relative to the open-loop DC gain of the system, self.kc:
             P_gain = 10**(kp/20)/self.kc
-            I_gain = 10**(kp/20)/self.kc * fi * (2*np.pi/self.sl.dev.ADC_CLK_Hz)
-            II_gain = 10**(kp/20)/self.kc * fi * fii * (2*np.pi/self.sl.dev.ADC_CLK_Hz)**2
+            I_gain = 10**(kp/20)/self.kc * fi * (2*np.pi/self.clock_freq_Hz)
+            II_gain = 10**(kp/20)/self.kc * fi * fii * (2*np.pi/self.clock_freq_Hz)**2
             if fd == 0.0:
                 D_gain = 0.0
             else:
-                D_gain = 10**(kp/20)/self.kc * self.sl.dev.ADC_CLK_Hz / (2*np.pi*fd)
+                D_gain = 10**(kp/20)/self.kc * self.clock_freq_Hz / (2*np.pi*fd)
 
-        D_coef = (2*np.pi*fdf) / self.sl.dev.ADC_CLK_Hz
+        D_coef = (2*np.pi*fdf) / self.clock_freq_Hz
 
 
         if self.qchk_kp.isChecked() == False:
@@ -696,13 +701,13 @@ class LoopFiltersUI(Qt.QWidget):
 
         (P_gain, I_gain, II_gain, D_gain, D_coef, bLock) = self.getActualControllerDesign()
 
-        self.sl.loop_filter.set_pll_settings(self.filter_number, P_gain, I_gain, II_gain, D_gain, D_coef, bLock, self.kc)
+        self.sll.loop_filter.set_pll_settings(self.filter_number, P_gain, I_gain, II_gain, D_gain, D_coef, bLock, self.kc)
 
 #        print('LoopFiltersUI::updateFilterSettings(): Exiting')
 
     def getFilterSettings(self):
 
-        (P_gain, I_gain, II_gain, D_gain, D_coef, bLock, OL_gain) = self.sl.loop_filter.get_pll_settings(self.filter_number)
+        (P_gain, I_gain, II_gain, D_gain, D_coef, bLock, OL_gain) = self.sll.loop_filter.get_pll_settings(self.filter_number)
 
         # print("P_gain %f" % P_gain)
         # print("I_gain %f" % I_gain)
@@ -725,10 +730,10 @@ class LoopFiltersUI(Qt.QWidget):
 
         if self.qchk_bKpCrossing.isChecked() == False:
 
-            fi = float(I_gain)*float(self.kc)*float(self.sl.dev.ADC_CLK_Hz)/(float(2)*float(np.pi))
+            fi = float(I_gain)*float(self.kc)*float(self.clock_freq_Hz)/(float(2)*float(np.pi))
 #            print("fi %f" % fi)
             try:
-                fii = II_gain*self.kc/fi/((2*np.pi/self.sl.dev.ADC_CLK_Hz)**2)
+                fii = II_gain*self.kc/fi/((2*np.pi/self.clock_freq_Hz)**2)
             except:
                 fii = 0
 #            print("fii %f" % fii)
@@ -736,24 +741,24 @@ class LoopFiltersUI(Qt.QWidget):
             if D_gain == 0:
                 fd = 0
             else:
-                fd = 1/(D_gain*self.kc/self.sl.dev.ADC_CLK_Hz*2*np.pi)
+                fd = 1/(D_gain*self.kc/self.clock_freq_Hz*2*np.pi)
 #            print("fd %f" % fd)
 
         else:
-            fi = (I_gain*self.kc*self.sl.dev.ADC_CLK_Hz/(2*np.pi))/10**(kp/20)
+            fi = (I_gain*self.kc*self.clock_freq_Hz/(2*np.pi))/10**(kp/20)
             #print("fi %f" % fi)
             try:
-                fii = II_gain*self.kc/fi/10**(kp/20)/((2*np.pi/self.sl.dev.ADC_CLK_Hz)**2)
+                fii = II_gain*self.kc/fi/10**(kp/20)/((2*np.pi/self.clock_freq_Hz)**2)
             except:
                 fii = 0
             #print("fii %f" % fii)
             if D_gain == 0:
                 fd = 0
             else:
-                fd = 1/(D_gain/(10**(kp/20))*self.kc/self.sl.dev.ADC_CLK_Hz*2*np.pi)
+                fd = 1/(D_gain/(10**(kp/20))*self.kc/self.clock_freq_Hz*2*np.pi)
             #print("fd %f" % fd)
 
-        fdf = D_coef*self.sl.dev.ADC_CLK_Hz/(2*np.pi)
+        fdf = D_coef*self.clock_freq_Hz/(2*np.pi)
 
         # print("kp %f" % kp)
         # print("fi %f" % fi)
@@ -925,7 +930,8 @@ class LoopFiltersUI(Qt.QWidget):
 
 
         f_array = np.logspace(np.log10(fmin), np.log10(fmax), 1000)
-        actual_gain_array = np.abs(self.sl.loop_filter.get_current_transfer_function(self.filter_number, f_array, self.sl.dev.ADC_CLK_Hz) * self.kc)
+        actual_gain_array = np.abs(self.sll.loop_filter.get_current_transfer_function(self.filter_number, f_array, self.clock_freq_Hz) * self.kc)
+        # actual_phase_array = np.angle(self.sll.loop_filter.get_current_transfer_function(self.filter_number, f_array, self.clock_freq_Hz) * self.kc)
         self.curve_actual.setData(f_array, 20*np.log10(actual_gain_array + self.MINIMUM_GAIN_DISPLAY))
 
         # print('LoopFiltersUI: setting X range: %f, %f' % (fmin, fmax))

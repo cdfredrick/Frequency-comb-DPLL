@@ -136,27 +136,6 @@ class controller(object):
         # self.xem_gui_mainwindow = XEM_GUI_MainWindow(self.sll, custom_shorthand + ': CEO lock', 0, (True, False, False), sp, custom_style_sheet, self.initial_config.strSelectedSerial, bUpdateFPGA = bSendToFPGA, bConnectedRP = bConnectedRP)
         self.xem_gui_mainwindow = XEM_GUI_MainWindow(self.sll, custom_shorthand + ': CEO lock', 0, (True, False, False), self.sp, custom_style_sheet, self.strSelectedSerial)
 
-
-    #    ###########################################################################
-    #    # For testing the Red Pitaya with the built-in DDS:
-    #
-    #    addr_vco = 2
-    #    addr_vco_amplitude = 0x0000
-    #    addr_vco_freq_msb  = 0x0004
-    #    addr_vco_freq_lsb  = 0x0008
-    #
-    #    vco_amplitude = round(0.01*(2**15-1))
-    ##   vco_freq_word = np.array([round((15e6/100e6+1./600.)*2.**48)]).astype(np.int64)
-    ##   # break vco word into msbs and lsbs:
-    ##   vco_freq_word_msbs = vco_freq_word >> 32
-    ##   vco_freq_word_lsbs = np.bitwise_and(vco_freq_word, (1<<32)-1)
-    #
-    #   # write amplitude
-    #    address_uint32 = (addr_vco << 20) + addr_vco_amplitude
-    #    data_uint32 = vco_amplitude
-    #    self.sll.dev.write_Zynq_register_uint32(address_uint32, data_uint32)
-
-        #########################################################
         # The two frequency counter:
         strOfTime = time.strftime("%m_%d_%Y_%H_%M_%S_")
 
@@ -212,15 +191,6 @@ class controller(object):
         self.settings_window.setLayout(hbox)
         self.settings_window.setWindowTitle(custom_shorthand + ': Dither controls')
         #self.settings_window.show()
-
-    #    ###########################################################################
-    #    # For testing out the transfer function window:
-    #    frequency_axis = np.logspace(np.log10(10e3), np.log10(2e6), 10e3)
-    #    transfer_function = 1/(1 + 1j*frequency_axis/100e3)
-    #    window_number = 1
-    #    vertical_units = 'V/V'
-    #    tf_window1 = DisplayTransferFunctionWindow(frequency_axis, transfer_function, window_number, vertical_units)
-    #
 
     #    # Regroup the two windows into a single one:
         self.main_windows = Qt.QWidget()
@@ -282,7 +252,7 @@ class controller(object):
         try:
             self.app.exec_()
         except:
-            print("XEM_GUI3.py: Exception during app.exec_()")
+            print("main_gui.py: Exception during app.exec_()")
 
 
     def loadDefaultValueFromConfigFile(self, strSelectedSerial):
@@ -341,7 +311,7 @@ class controller(object):
 
         self.sll.dev.open_TCP_connection(ip_addr)
         # Now we just need to reset the frontend to make sure we start everything in a nice state
-        self.sll.reset_front_end()
+        self.sll.dev.reset_front_end()
         self.loadDefaultValueFromConfigFile(strSelectedSerial)
 
 
@@ -360,9 +330,6 @@ class controller(object):
         if self.sll.dev.valid_socket:
             self.sll.dev.close_TCP_connection()
         self.sll.dev.open_TCP_connection(ip_addr)
-
-
-
         self.xem_gui_mainwindow2.pushActualValues()
         self.xem_gui_mainwindow.pushActualValues()
         self.freq_error_window1.pushValues()
@@ -382,6 +349,8 @@ class controller(object):
         self.divider_settings_window.getValues()
         self.dither_widget0.getValues()
         self.dither_widget1.getValues()
+        # Reset the Connection
+        # self.sll.dev.restart_TCP_connection(print_error=False)
 
     def stopCommunication(self):
         if self.sll.dev.valid_socket:
@@ -409,5 +378,5 @@ class controller(object):
 
 #--- Main
 if __name__ == '__main__':
-    controller()
+    cntr = controller()
 

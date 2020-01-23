@@ -32,119 +32,96 @@ use IEEE.STD_LOGIC_1164.ALL;
 
 entity multiplexer_NbitsxMsignals_to_Nbits is
 	Generic (
-		N_bits_per_signal : integer := 17
-		
+		N_bits_per_signal : integer := 17;
+		N_bits_per_ref_signal : integer :=16
 		);
-    Port ( 
-           clk : in  STD_LOGIC;
+    Port (
+         
+        clk : in  STD_LOGIC;
+		
+		-- The RAM write clock enable must be in the MSB
+        in0_adc_0 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in1_adc_1 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in2_err_sig_0 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in3_err_sig_1 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in4_vna : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in5 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in6_dac_0 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        in7_dac_1 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
 			  
-			  -- If the input signal contains a clock enable, we just need to concatenate it with the data bits to ensure it gets the same delay as the signal
-           in0 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in1 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in2 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in3 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in4 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in5 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in6 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-           in7 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+		in8_err_sig_2 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+		in9 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+		in10 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
 			  
-			  in8 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-			  in9 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
-			  in10 : in  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        selector : in  STD_LOGIC_VECTOR (4 downto 0);
+        selected_output : out  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0);
+        
+        ref_cosine_0 : in  STD_LOGIC_VECTOR (N_bits_per_ref_signal-1 downto 0);
+        ref_sine_0 : in  STD_LOGIC_VECTOR (N_bits_per_ref_signal-1 downto 0);
+        ref_cosine_1 : in  STD_LOGIC_VECTOR (N_bits_per_ref_signal-1 downto 0);
+        ref_sine_1 : in  STD_LOGIC_VECTOR (N_bits_per_ref_signal-1 downto 0);
+        ref_sin_out : out  STD_LOGIC_VECTOR (N_bits_per_ref_signal-1 downto 0);
+        ref_cos_out : out  STD_LOGIC_VECTOR (N_bits_per_ref_signal-1 downto 0)
 			  
-           selector : in  STD_LOGIC_VECTOR (4 downto 0);
-           selected_output : out  STD_LOGIC_VECTOR (N_bits_per_signal-1 downto 0)
-			  
-			  );
+		);
 end multiplexer_NbitsxMsignals_to_Nbits;
 
 architecture Behavioral of multiplexer_NbitsxMsignals_to_Nbits is
-	signal mux01, mux23, mux45, mux67 : std_logic_vector(N_bits_per_signal-1 downto 0);
-	signal mux01_reg, mux23_reg, mux45_reg, mux67_reg : std_logic_vector(N_bits_per_signal-1 downto 0);
-	signal mux01234567_reg : std_logic_vector(N_bits_per_signal-1 downto 0);
+	signal mux_out_reg : std_logic_vector(N_bits_per_signal-1 downto 0) := (others => '0');
+	signal ref_sin_reg : std_logic_vector(N_bits_per_ref_signal-1 downto 0) := (others => '0');
+	signal ref_cos_reg : std_logic_vector(N_bits_per_ref_signal-1 downto 0) := (others => '0');
 	
 begin
 
-	-- The multiplexer architecture is:
-	-- Signals are first muxed in pairs in 2-to-1 muxes, then an extra register stage to help with the routing, then they all go through a 4-to-1 mux
-	-- This design is done to help with the locality of signals: pairs of sources that are close together should be connected to a pair of signals that goes to a single mux
-	-- for example, (in0 + in1), (in2 + in3), ...
-	
-	
-	-- Implements the first 2-to-1 mux stage
-	process (clk)
+    process (clk)
+	   variable write_mode : std_ulogic := '0';
+	   variable write_mode_last : std_ulogic := '0';
 	begin
-		if rising_edge(clk) then
-			case selector(0) is
-				when '0' =>
-					mux01 <= in0;
-					mux23 <= in2;
-					mux45 <= in4;
-					mux67 <= in6;
-				when '1' =>
-					mux01 <= in1;
-					mux23 <= in3;
-					mux45 <= in5;
-					mux67 <= in7;
-				when others =>
-					-- shouldn't be possible except in simulation, just to keep synthesis appy
-					mux01 <= in0;
-					mux23 <= in2;
-					mux45 <= in4;
-					mux67 <= in6;
-				end case;
-		end if;
-	end process;
-	
-	-- Implements the intermediate registers (to help with splitting up routing delays between clock cycles)
-	process (clk)
-	begin
-		if rising_edge(clk) then
-			mux01_reg <= mux01;
-			mux23_reg <= mux23;
-			mux45_reg <= mux45;
-			mux67_reg <= mux67;
-		end if;
-	end process;
-	
-	-- Implements the second 4-to-1 mux stage.
-	process (clk)
-	begin
-		if rising_edge(clk) then
-			case selector(2 downto 1) is
-				when b"00" =>
-					mux01234567_reg <= mux01_reg;
-				when b"01" =>
-					mux01234567_reg <= mux23_reg;
-				when b"10" =>
-					mux01234567_reg <= mux45_reg;
-				when b"11" =>
-					mux01234567_reg <= mux67_reg;
-				when others =>
-					mux01234567_reg <= mux01_reg;	-- shouldn't be possible except in simulation, just to keep synthesis appy
-				end case;
-		end if;
-	end process;
-	
-	-- Implements the last 4-to-1 mux stage.
-	process (clk)
-	begin
-		if rising_edge(clk) then
-			case selector(4 downto 3) is
-				when b"00" =>
-					selected_output <= mux01234567_reg;
-				when b"01" =>
-					selected_output <= in8;
-				when b"10" =>
-					selected_output <= in9;
-				when b"11" =>
-					selected_output <= in10;
-				when others =>
-					selected_output <= mux01234567_reg;	-- shouldn't be possible except in simulation, just to keep synthesis appy
-				end case;
-		end if;
-	end process;
-	
+	   if rising_edge(clk) then
+	       -- Multiplexer
+	       case selector is
+	           when x"0" =>
+	               mux_out_reg <= in0_adc_0;
+	               -- Rising edge detector:
+	               write_mode := in0_adc_0(N_bits_per_ref_signal-1);
+	               if (write_mode = '1') and (write_mode_last = '0') then
+	                   ref_sin_reg <= ref_sine_0;
+	                   ref_cos_reg <= ref_cosine_0;
+	               end if;
+	               write_mode_last := write_mode;
+	           when x"1" =>
+	               mux_out_reg <= in1_adc_1;
+	               -- Rising edge detector:
+                   write_mode := in1_adc_1(N_bits_per_ref_signal-1);
+                   if (write_mode = '1') and (write_mode_last = '0') then
+                       ref_sin_reg <= ref_sine_1;
+                       ref_cos_reg <= ref_cosine_1;
+                   end if;
+                   write_mode_last := write_mode;
+	           when x"2" =>
+	               mux_out_reg <= in2_err_sig_0;
+	           when x"3" =>
+	               mux_out_reg <= in3_err_sig_1;
+	           when x"4" =>
+	               mux_out_reg <= in4_vna;
+	           when x"5" =>
+	               mux_out_reg <= in5;
+	           when x"6" =>
+	               mux_out_reg <= in6_dac_0;
+	           when x"7" =>
+	               mux_out_reg <= in7_dac_1;
+	           when x"8" =>
+	               mux_out_reg <= in8_err_sig_2;
+	           when x"9" =>
+	               mux_out_reg <= in9;
+	           when others =>
+	               mux_out_reg <= in10;
+	        end case;
+	        selected_output <= mux_out_reg;
+	        ref_sin_out <= ref_sin_reg;
+	        ref_cos_out <= ref_cos_reg;
+	     end if;
+	  end process;	
 
 end Behavioral;
 

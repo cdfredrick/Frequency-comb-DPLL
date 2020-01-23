@@ -134,8 +134,8 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
     def initBuffer(self):
 #        print('initBuffer')
-        self.gate_time_counter = self.sll.dev.COUNTER_GATE_TIME_N_CYCLES/self.sll.dev.ADC_CLK_Hz
-        self.gate_time_dacs = self.sll.dev.COUNTER_GATE_TIME_N_CYCLES/self.sll.dev.ADC_CLK_Hz/1
+        self.gate_time_counter = self.sll.daq.get_counter_period()
+        self.gate_time_dacs = self.sll.daq.get_counter_period()
         try:
             self.N_history_counters = int(round(float(self.qedit_history.text()) / self.gate_time_counter))
             self.N_history_dacs = int(round(float(self.qedit_history.text()) / self.gate_time_dacs))
@@ -179,16 +179,16 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
     def chkTriangular_checked(self):
         if self.qchk_triangular.isChecked():
-            self.sll.setCounterMode(True)
+            self.sll.daq.set_counter_mode(True)
         else:
-            self.sll.setCounterMode(False)
+            self.sll.daq.set_counter_mode(False)
         print('Updating counter mode')
 
     def getTriangular_checked(self):
-        self.bTriangularAveraging = self.sll.getCounterMode()
+        self.bTriangularAveraging = self.sll.daq.get_counter_mode()
 
         self.qchk_triangular.blockSignals(True)
-        self.qchk_triangular.setChecked(self.sll.bTriangularAveraging)
+        self.qchk_triangular.setChecked(self.bTriangularAveraging)
         self.qchk_triangular.blockSignals(False)
 
     def initUI(self):
@@ -252,10 +252,9 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.qchk_triangular.clicked.connect(self.chkTriangular_checked)
 
         # Controls for the vertical scale of the frequency graph:
-        print(type(self.sll.dev.ADC_CLK_Hz))
-        print(self.sll.dev.ADC_CLK_Hz)
-        self.qedit_ymin = user_friendly_QLineEdit('%f' % (-self.sll.dev.ADC_CLK_Hz/4.))
-        self.qedit_ymax = user_friendly_QLineEdit('%f' % (self.sll.dev.ADC_CLK_Hz/4.))
+        ddc_freq_lim = self.sll.loop_filter.ddc_frequency_limits()
+        self.qedit_ymin = user_friendly_QLineEdit('%f' % min(ddc_freq_lim))
+        self.qedit_ymax = user_friendly_QLineEdit('%f' % max(ddc_freq_lim))
 
         # Controls for Auto Recovery
         self.qchk_autorecover = Qt.QCheckBox('Auto Recover')
@@ -371,10 +370,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
     def timerEvent(self, e):
 
 #        print('timerEvent, timerID = %d' % self.timerID)
-        self.qchk_triangular.blockSignals(True)
-        self.qchk_triangular.setChecked(self.sll.bTriangularAveraging)
-        self.qchk_triangular.blockSignals(False)
-
+        #TODO: put option to select counter mode in region separate from plots
         self.displayFreqCounter()
 
         return
@@ -527,69 +523,52 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
     def displayFreqCounter(self):
         try:
-            (freq_counter_samples, time_axis, DAC0_output, DAC1_output, DAC2_output) = self.sll.read_dual_mode_counter(self.output_number)
-            # print (freq_counter_samples, time_axis, DAC0_output, DAC1_output, DAC2_output)
-
+            counter_result = self.sll.daq.read_dual_mode_counter()
+            (freq_counter_sample, DAC_output) = counter_result[self.output_number]
         except:
             print('Exception occured reading counter data. disabling further updates.')
             self.killTimer(self.timerID)
-            freq_counter_samples = 0
-            time_axis = 0
-            DAC0_output = 0
-            DAC1_output = 0
-            DAC2_output = 0
-
+            freq_counter_sample = None
+            DAC_output = None
+            time_axis = None
             raise
 
         try:
-            if time_axis is not None:
-                # scale to seconds:
-                time_axis = time_axis.astype(float) * self.gate_time
-                # Write data to disk:
-                self.file_output_time.write(time_axis)
+            # scale to seconds:
+            time_axis = time.time()
+            # Write data to disk:
+            self.file_output_time.write(np.array(time_axis))
 
-            if DAC0_output is not None:
-                if self.output_number == 0:
-                # Run auto recovery for DAC0
-                    dac_mean, dac_thrsh = self.runAutoRecover(self.output_number, np.mean(DAC0_output))
+            if DAC_output is not None:
+                # Run auto recovery for DAC X
+                dac_mean, dac_thrsh = self.runAutoRecover(self.output_number, DAC_output)
                 # Convert to Volts
-                    dac_output = DAC0_output * self.sll.dev.DAC_V_INT
-                    dac_mean = dac_mean * self.sll.dev.DAC_V_INT
-                    dac_thrsh = dac_thrsh * self.sll.dev.DAC_V_INT
-                # Write data to disk:
-                    self.file_output_dac0.write(np.array([dac_output]))
-
-            if DAC1_output is not None:
+                dac_output = self.sll.dac.dac_output_voltage(DAC_output)
+                dac_mean = self.sll.dac.dac_output_voltage(dac_mean)
+                dac_thrsh = self.sll.dac.dac_output_voltage(dac_thrsh)
+                if self.output_number == 0:
+                    # Write data to disk:
+                    self.file_output_dac0.write(np.array(dac_output))
                 if self.output_number == 1:
-                # Run auto recovery for DAC1
-                    dac_mean, dac_thrsh = self.runAutoRecover(self.output_number, np.mean(DAC1_output))
-                    dac_output = DAC1_output * self.sll.dev.DAC_V_INT
-                    dac_mean = dac_mean * self.sll.dev.DAC_V_INT
-                    dac_thrsh = dac_thrsh * self.sll.dev.DAC_V_INT
-                # Write data to disk:
-                    self.file_output_dac1.write(np.array([dac_output]))
+                    # Write data to disk:
+                    self.file_output_dac1.write(np.array(dac_output))
 
-            if DAC2_output is not None:
-                # Write data to disk:
-                self.file_output_dac2.write(np.array([DAC2_output]))
-                self.runTempControlLoop(time.clock(), DAC2_output[-1:])
-
-            if freq_counter_samples is not None:
+            if freq_counter_sample is not None:
                 if self.bVeryFirst == True:
                     self.bVeryFirst = False
                     return
 
                 # Write data to disk:
                 if self.output_number == 0:
-                    self.file_output_counter0.write(np.array([freq_counter_samples]))
+                    self.file_output_counter0.write(np.array(freq_counter_sample))
                 elif self.output_number == 1:
-                    self.file_output_counter1.write(np.array([freq_counter_samples]))
+                    self.file_output_counter1.write(np.array(freq_counter_sample))
 
                 # Record the new chunk of data in the buffer:
 
 #                print('len = %d' % 1)
                 self.freq_history[:-1] = self.freq_history[1:]
-                self.freq_history[-1:] = freq_counter_samples
+                self.freq_history[-1:] = freq_counter_sample
 
                 self.DAC_history[:-1] = self.DAC_history[1:]
                 self.DAC_history[-1:] = dac_output
@@ -652,11 +631,8 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         except:
             print('Exception occured parsing counter data. disabling further updates.')
             self.killTimer(self.timerID)
-            freq_counter_samples = 0
-            time_axis = 0
-            DAC0_output = 0
-            DAC1_output = 0
-            DAC2_output = 0
-
+            freq_counter_sample = None
+            time_axis = None
+            DAC_output = None
             raise
 

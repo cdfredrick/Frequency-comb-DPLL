@@ -25,6 +25,9 @@ port (
     counter1_out                           : in  std_logic_vector(64-1 downto 0);
     DAC0_out                               : in  std_logic_vector(32-1 downto 0);
     DAC1_out                               : in  std_logic_vector(32-1 downto 0);
+    
+    -- Other
+    ref_sin_cos                            : in  std_logic_vector(32-1 downto 0);
 
 
     -- internal configuration bus
@@ -194,8 +197,8 @@ begin
                     when x"0025" =>
                         sys_rdata <= status_flags;
                         sys_ack   <= sys_en;
-
-                    -- these two should always be read sequentially, in this order, so that we sample all bits at exactly the same time
+                        
+                    -- x"0026" and x"0027" should always be read sequentially, in this order, so that we sample all bits at exactly the same time
                     when x"0026" =>
                         sys_rdata <= dither0_lockin_output(32-1 downto 0);
                         dither0_lockin_output_reg <= dither0_lockin_output;
@@ -203,8 +206,8 @@ begin
                     when x"0027" =>
                         sys_rdata <= dither0_lockin_output_reg(32+32-1 downto 32);               -- dither0_lockin_output MSB
                         sys_ack   <= sys_en;
-
-                    -- these two should always be read sequentially, in this order, so that we sample all bits at exactly the same time
+                        
+                    -- x"0029" and x"002A" should always be read sequentially, in this order, so that we sample all bits at exactly the same time
                     when x"0029" =>
                         sys_rdata                 <= dither1_lockin_output(32-1 downto 0);
                         dither1_lockin_output_reg <= dither1_lockin_output;
@@ -212,7 +215,7 @@ begin
                     when x"002A" =>
                         sys_rdata <= dither1_lockin_output_reg(32+32-1 downto 32);                -- dither1_lockin_output MSB
                         sys_ack   <= sys_en;
-
+                        
                     -- we sample all five next signals when we read at this address:
                     when x"0030" =>                                                       -- zdtc_samples_number_counter
                         sys_rdata           <= zdtc_samples_number_counter;
@@ -221,24 +224,48 @@ begin
                         DAC0_out_reg        <= DAC0_out;
                         DAC1_out_reg        <= DAC1_out;
                         sys_ack             <= sys_en;
-
-                    when x"0031" => sys_ack <= sys_en; sys_rdata <= counter0_out_reg(32-1    downto  0);     -- counter 0 LSBs
-                    when x"0032" => sys_ack <= sys_en; sys_rdata <= counter0_out_reg(32+32-1 downto 32);     -- counter 0 MSBs
-                    when x"0033" => sys_ack <= sys_en; sys_rdata <= counter1_out_reg(32-1    downto  0);     -- counter 1 LSBs
-                    when x"0034" => sys_ack <= sys_en; sys_rdata <= counter1_out_reg(32+32-1 downto 32);     -- counter 1 MSBs
-                    when x"0035" => sys_ack <= sys_en; sys_rdata <= DAC0_out_reg(32-1 downto 0);             -- DAC 0
-                    when x"0036" => sys_ack <= sys_en; sys_rdata <= DAC1_out_reg(32-1 downto 0);             -- DAC 1
-
-
-                    --when x"0037" => sys_ack <= sys_en; sys_rdata <= counter_for_throughput_test;             -- this is for a throughput test, a simple counter at 100 MHz
+                    when x"0031" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= counter0_out_reg(32-1    downto  0);     -- counter 0 LSBs
+                    when x"0032" =>
+                        sys_ack <= sys_en; 
+                        sys_rdata <= counter0_out_reg(32+32-1 downto 32);     -- counter 0 MSBs
+                    when x"0033" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= counter1_out_reg(32-1    downto  0);     -- counter 1 LSBs
+                    when x"0034" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= counter1_out_reg(32+32-1 downto 32);     -- counter 1 MSBs
+                    when x"0035" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= DAC0_out_reg(32-1 downto 0);             -- DAC 0
+                    when x"0036" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= DAC1_out_reg(32-1 downto 0);             -- DAC 1
 
                     -- FIFO addresses
-                    when x"0038" => sys_ack <= sys_en;     sys_rdata <= std_logic_vector(to_unsigned(0, 31)) &  fifo_prog_empty;             -- fifo has at least 10 samples to be read?
-                    --when x"0039" => sys_ack <= fifo_rd_en_d1; sys_rdata <= fifo_dout;             -- fifo read
-                    when x"0039" => sys_ack <= sys_en; sys_rdata <= fifo_dout;             -- fifo read
+--                    when x"0037" =>
+--                        sys_ack <= sys_en;
+--                        sys_rdata <= counter_for_throughput_test;             -- this is for a throughput test, a simple counter at 100 MHz
+                    when x"0038" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= std_logic_vector(to_unsigned(0, 31)) &  fifo_prog_empty;             -- fifo has at least 10 samples to be read?
+--                    when x"0039" =>
+--                        sys_ack <= fifo_rd_en_d1;
+--                        sys_rdata <= fifo_dout;             -- fifo read
+                    when x"0039" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= fifo_dout;             -- fifo read
+                    when x"0040" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= std_logic_vector(resize(unsigned(fifo_data_count_max), 32));             -- max of fifo data_count
+                    
+                    -- Reference sin and cos
+                    when x"0050" =>
+                        sys_ack <= sys_en;
+                        sys_rdata <= ref_sin_cos;
 
-                    when x"0040" => sys_ack <= sys_en;     sys_rdata <= std_logic_vector(resize(unsigned(fifo_data_count_max), 32));             -- max of fifo data_count
-
+                    -- Catchall
                     when others   => sys_ack <= sys_en;     sys_rdata <=  (others => '0');
                 end case;
             else

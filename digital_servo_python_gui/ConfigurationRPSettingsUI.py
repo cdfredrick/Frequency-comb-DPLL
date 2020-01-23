@@ -84,7 +84,7 @@ class ConfigRPSettingsUI(Qt.QWidget):
         self.mux_vco_Action()
         self.mux_pll1_Action()
         self.setInternalVCO_amplitude()
-        self.setFan()
+        self.set_fan()
 
     def getValues(self):
         #get value from the memory of the red pitaya
@@ -214,8 +214,8 @@ class ConfigRPSettingsUI(Qt.QWidget):
         self.qradio_fan_on  = Qt.QRadioButton('Fan on')
         self.qradio_fan_off = Qt.QRadioButton('Fan off')
         self.qradio_fan_on.setChecked(True)
-        self.qradio_fan_on.clicked.connect(self.setFan)
-        self.qradio_fan_off.clicked.connect(self.setFan)
+        self.qradio_fan_on.clicked.connect(self.set_fan)
+        self.qradio_fan_off.clicked.connect(self.set_fan)
 
         fanUI.addWidget(self.qradio_fan_on,     0, 0)
         fanUI.addWidget(self.qradio_fan_off,     1, 0)
@@ -256,24 +256,14 @@ class ConfigRPSettingsUI(Qt.QWidget):
         #self.show()
         #self.show()
 
-    #Function to read the value in the RAM Block (channel 2) to an address
-    #The data we should read are the data sent to dpll_wrapper module (channel 0)
+    #Function to read the value in the BRAM Block (channel 2) to an address
     def read_RP(self):
         addr = int(self.qedit_addr.text(),16)
-        bus_address = (2 << 20) + addr*4
+        bus_address = self.sll.dev.dpll_legacy_read_address(addr)
         value = str(self.sll.dev.read_Zynq_register_uint32(bus_address))
         self.qedit_data.blockSignals(True)
         self.qedit_data.setText(value)
         self.qedit_data.blockSignals(False)
-
-        # bus_address = (2 << 20) + 0x9001*4
-        # value = str(self.sll.dev.read_Zynq_register_uint32(bus_address))
-        # print(value)
-
-        # bus_address = (2 << 20) + 0x9000*4
-        # value = str(self.sll.dev.read_Zynq_register_uint32(bus_address))
-        # print(value)
-
 
     def communication_menu(self):
         # Open the initial menu in which we select the RP and if we want to reconnect to one. We can open a new connection without closing the GUI
@@ -288,9 +278,9 @@ class ConfigRPSettingsUI(Qt.QWidget):
         #self.move(QtGui.QDesktopWidget().availableGeometry().topLeft() + Qt.QPoint(50, 50))
 
 
-    def setFan(self):
+    def set_fan(self):
         # Set the output of 2 IO pins (0 or 3.3V) for the activation of the fan
-        self.sll.setFan(self.qradio_fan_on.isChecked())
+        self.sll.dev.set_fan(self.qradio_fan_on.isChecked())
 
     def mux_vco_Action(self):
         if self.qradio_VCO_to_DAC0.isChecked():
