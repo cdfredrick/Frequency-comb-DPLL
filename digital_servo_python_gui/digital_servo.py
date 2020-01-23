@@ -58,7 +58,7 @@ class RedPitayaDevice:
         self.sock = SocketPlaceholder()
         self.valid_socket = 0
 
-        self._n_reconnects = 0
+        self._MAX_ATTEMPTS = 3
 
     ###########################################################################
     #--- Red Pitaya System Limits:
@@ -152,7 +152,7 @@ class RedPitayaDevice:
         buf = b''
         while count:
             newbuf = self.sock.recv(count)
-            if not newbuf: return None
+            if not newbuf: return buf
             buf += newbuf
             count -= len(newbuf)
         return buf
@@ -187,17 +187,21 @@ class RedPitayaDevice:
                            ' The implemented Zynq registers have offsets'
                            ' aligned to 4 bytes').format(address_uint32))
         # Write 32 bits into the Zynq register
-        try:
-            packet_to_send = struct.pack(
-                '<II',
-                MAGIC_BYTES_WRITE_REG,
-                RP_TOP_ADDR + address_uint32)
-            packet_to_send = packet_to_send + data_buffer
-            self.sock.sendall(packet_to_send)
-        except:
-            print("Unexpected error when writing Zynq register: ",
-                  sys.exc_info()[0])
-            self.restart_TCP_connection()
+        attempts = 0
+        success = False
+        while not(success) and (attempts < self._MAX_ATTEMPTS):
+            try:
+                packet_to_send = struct.pack(
+                    '<II',
+                    MAGIC_BYTES_WRITE_REG,
+                    RP_TOP_ADDR + address_uint32)
+                packet_to_send = packet_to_send + data_buffer
+                self.sock.sendall(packet_to_send)
+                success = True
+            except:
+                attempts += 1
+                print("Unexpected error when writing Zynq register: Attempt {:} of {:}".format(attempts, self._MAX_ATTEMPTS))
+                self.restart_TCP_connection()
 
     # Write 2x Unsigned int16 Zynq Register -----------------------------------
     def write_Zynq_register_2x_uint16(self, address_uint32, data1_uint16, data2_uint16):
@@ -278,22 +282,26 @@ class RedPitayaDevice:
         if number_of_points > MAX_SAMPLES_READ_BUFFER:
             number_of_points = MAX_SAMPLES_READ_BUFFER
             print("number of points clamped to %d." % number_of_points)
+        number_of_bytes = int(2*number_of_points)
         # Read stream of 16 bit data from the Zynq buffer
-        try:
-            packet_to_send = struct.pack(
-                '<III',
-                MAGIC_BYTES_READ_BUFFER,
-                RP_TOP_ADDR,
-                number_of_points)
-            self.sock.sendall(packet_to_send)
-            data_buffer = self.recvall(int(2*number_of_points)) # read number_of_points samples (16 bits each)
-        except:
-            print("Unexpected error when reading Zynq buffer: ",
-                  sys.exc_info()[0])
-            self.restart_TCP_connection()
+        attempts = 0
+        success = False
+        while not(success) and (attempts < self._MAX_ATTEMPTS):
+            try:
+                packet_to_send = struct.pack(
+                    '<III',
+                    MAGIC_BYTES_READ_BUFFER,
+                    RP_TOP_ADDR,
+                    number_of_points)
+                self.sock.sendall(packet_to_send)
+                data_buffer = self.recvall(number_of_bytes) # read number_of_points samples (2*8 bits = 16 bits each)
+                if len(data_buffer) == number_of_bytes:
+                    success = True
+            except:
+                attempts += 1
+                print("Unexpected error when reading Zynq buffer: Attempt {:} of {:}".format(attempts, self._MAX_ATTEMPTS))
+                self.restart_TCP_connection()
         # Return unaltered data buffer
-        if data_buffer is None:
-            data_buffer = bytes()
         return data_buffer
 
     # Read 32 bit Zynq Register -----------------------------------------------
@@ -306,18 +314,23 @@ class RedPitayaDevice:
                            ' The implemented Zynq registers have offsets'
                            ' aligned to 4 bytes').format(address_uint32))
         # Read 32 bits from the Zynq register
-        try:
-            packet_to_send = struct.pack(
-                '<III',
-                MAGIC_BYTES_READ_REG,
-                RP_TOP_ADDR + address_uint32,
-                0)  # last value is reserved
-            self.sock.sendall(packet_to_send)
-            data_buffer = self.recvall(4)   # read 4 bytes (32 bits)
-        except:
-            print("Unexpected error when reading Zynq register: ",
-                  sys.exc_info()[0])
-            self.restart_TCP_connection()
+        attempts = 0
+        success = False
+        while not(success) and (attempts < self._MAX_ATTEMPTS):
+            try:
+                packet_to_send = struct.pack(
+                    '<III',
+                    MAGIC_BYTES_READ_REG,
+                    RP_TOP_ADDR + address_uint32,
+                    0)  # last value is reserved
+                self.sock.sendall(packet_to_send)
+                data_buffer = self.recvall(4)   # read 4 bytes (4*8 bits = 32 bits each)
+                if len(data_buffer) == 4:
+                    success = True
+            except:
+                attempts += 1
+                print("Unexpected error when reading Zynq register: Attempt {:} of {:}".format(attempts, self._MAX_ATTEMPTS))
+                self.restart_TCP_connection()
         # Return unaltered data buffer
         if data_buffer is None:
             data_buffer = bytes() #(0).to_bytes(4, 'little')
