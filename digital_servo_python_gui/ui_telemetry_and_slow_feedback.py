@@ -9,20 +9,14 @@ import time
 from PyQt5 import QtGui, Qt, QtCore
 #import PyQt5.Qwt5 as Qwt
 import numpy as np
-import math
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 import os
-import errno
-import sys
-
 
 #from SuperLaserLand_JD2 import SuperLaserLand_JD2
 
 # To communicate with the temperature controller process
 import AsyncSocketComms
-
-import weakref
 
 # stuff for Python 3 port
 import pyqtgraph as pg
@@ -44,7 +38,7 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
         # Need to pass xem_gui_window as a parameter (to control DAC offset)
         if xem_gui_mainwindow:
-            self.xem_gui_mainwindow = weakref.proxy(xem_gui_mainwindow)
+            self.xem_gui_mainwindow = xem_gui_mainwindow
         else:
             self.xem_gui_mainwindow = None
 
@@ -55,144 +49,14 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         if self.client is None:
             print('Warning: no connection to temp control')
 
+        self.counter_sample_number = 0
         self.last_update_freq = time.clock()
         self.initUI()
         self.openOutputFiles()
 
         self.recovery_history = np.array([])
 
-
-
-#    def __del__(self):
-#        # Close data files:
-#        if hasattr(self, 'file_output1'):
-#            self.file_output1.close()
-#        if hasattr(self, 'file_output2'):
-#            self.file_output2.close()
-
-    def loadParameters(self):
-        strDAC = 'DAC{:01d}'.format(self.output_number)
-        chk = int((self.sp.getValue('Triangular_averaging', strDAC)))
-        if chk > 0:
-            bTriangularAveraging = True
-        else:
-            bTriangularAveraging = False
-
-        self.qchk_triangular.setChecked(bTriangularAveraging)
-
-    def pushDefaultValues(self):
-        self.loadParameters()
-        self.chkTriangular_checked()
-        self.initBuffer()
-        # Start timer which grabs data
-        self.startTimers()
-
-    def pushActualValues(self):
-        # Not use for the moment
-        self.chkTriangular_checked()
-        self.initBuffer()
-        # Start timer which grabs data
-        self.startTimers()
-
-    def getValues(self):
-        self.getTriangular_checked()
-        self.initBuffer()
-        # Start timer which grabs data
-        self.startTimers()
-
-    def startTimers(self):
-        print("%s start timers" % self.strTitle)
-        self.timerID = self.startTimer(500)
-
-    def killTimers(self):
-        print("%s kill timers" % self.strTitle)
-
-        #if self.timerID.isActive():
-        self.killTimer(self.timerID)
-
-
-    def open_TCP_connection(self):
-        start_time = time.clock()
-        if self.port_number != 0:
-            try:
-                time_before = time.clock()
-                self.client = AsyncSocketComms.AsyncSocketClient(self.port_number)
-                self.last_update = float("-inf")
-                self.setpoint_change = 0.
-                print('Connection to temp control established.')
-            except:
-                time_after = time.clock()
-                print('open_TCP_connection(): Time taken by AsyncSocketComms.AsyncSocketClient(): %f sec' % (time_after-time_before))
-                self.client = None
-                self.last_update = time.clock()
-                self.setpoint_change = 0.
-        else:
-            self.client = None
-        end_time = time.clock()
-        print('open_TCP_connection(): Time taken: %f sec' % (end_time-start_time))
-
-
-    def initBuffer(self):
-#        print('initBuffer')
-        self.gate_time_counter = self.sll.daq.get_counter_period()
-        self.gate_time_dacs = self.sll.daq.get_counter_period()
-        try:
-            self.N_history_counters = int(round(float(self.qedit_history.text()) / self.gate_time_counter))
-            self.N_history_dacs = int(round(float(self.qedit_history.text()) / self.gate_time_dacs))
-        except:
-            self.N_history_counters = int(round(10 / self.gate_time_counter))
-            self.N_history_dacs = int(round(10 / self.gate_time_dacs))
-
-        self.DAC_history = np.zeros(self.N_history_dacs)
-        self.DAC_mean_history = np.zeros(self.N_history_dacs)*np.nan
-        self.DAC_thrsh_history = np.zeros(self.N_history_dacs)*np.nan
-
-        self.freq_history = np.zeros(self.N_history_counters)
-#        self.time_history = np.zeros(self.N_history)
-
-        self.time_history_counters = np.linspace(-self.N_history_counters+1, 0, self.N_history_counters) * self.gate_time_counter
-        self.time_history_dacs = np.linspace(-self.N_history_dacs+1, 0, self.N_history_dacs) * self.gate_time_dacs
-        self.bValid_counters = (np.zeros(self.N_history_counters) == 1)
-        self.bValid_dacs = (np.zeros(self.N_history_dacs) == 1)
-        self.bVeryFirst = True
-
-    def openOutputFiles(self):
-
-
-        # Create the subdirectory if it doesn't exist:
-        os.makedirs('data_logging', exist_ok=True)
-
-        # Open file for output
-        strCurrentName1 = self.strNameTemplate + 'freq_counter0.bin'
-        strCurrentName2 = self.strNameTemplate + 'freq_counter1.bin'
-        strCurrentName3 = self.strNameTemplate + 'freq_counter0_time_axis.bin'
-        strCurrentName4 = self.strNameTemplate + 'DAC0.bin'
-        strCurrentName5 = self.strNameTemplate + 'DAC1.bin'
-        strCurrentName6 = self.strNameTemplate + 'DAC2.bin'
-        self.file_output_counter0 = open(strCurrentName1, 'wb')
-        self.file_output_counter1 = open(strCurrentName2, 'wb')
-        self.file_output_time = open(strCurrentName3, 'wb')
-        self.file_output_dac0 = open(strCurrentName4, 'wb')
-        self.file_output_dac1 = open(strCurrentName5, 'wb')
-        self.file_output_dac2 = open(strCurrentName6, 'wb')
-
-
-    def chkTriangular_checked(self):
-        if self.qchk_triangular.isChecked():
-            self.sll.daq.set_counter_mode(True)
-        else:
-            self.sll.daq.set_counter_mode(False)
-        print('Updating counter mode')
-
-    def getTriangular_checked(self):
-        self.bTriangularAveraging = self.sll.daq.get_counter_mode()
-
-        self.qchk_triangular.blockSignals(True)
-        self.qchk_triangular.setChecked(self.bTriangularAveraging)
-        self.qchk_triangular.blockSignals(False)
-
     def initUI(self):
-
         # Put everything in a groupbox so we can change the border of the window without it looking too obnoxious:
         self.qgroupbox_freq = Qt.QGroupBox('')
         self.qgroupbox_freq.setAutoFillBackground(True)
@@ -353,6 +217,122 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
         self.center()
         self.setWindowTitle(self.strTitle)
         #self.show()
+
+    def loadParameters(self):
+        strDAC = 'DAC{:01d}'.format(self.output_number)
+        chk = int((self.sp.getValue('Triangular_averaging', strDAC)))
+        if chk > 0:
+            bTriangularAveraging = True
+        else:
+            bTriangularAveraging = False
+
+        self.qchk_triangular.setChecked(bTriangularAveraging)
+
+    def pushDefaultValues(self):
+        self.loadParameters()
+        self.chkTriangular_checked()
+        self.initBuffer()
+        # Start timer which grabs data
+        self.startTimers()
+
+    def pushActualValues(self):
+        # Not use for the moment
+        self.chkTriangular_checked()
+        self.initBuffer()
+        # Start timer which grabs data
+        self.startTimers()
+
+    def getValues(self):
+        self.getTriangular_checked()
+        self.initBuffer()
+        # Start timer which grabs data
+        self.startTimers()
+
+    def startTimers(self):
+        print("%s start timers" % self.strTitle)
+        self.timerID = self.startTimer(500)
+
+    def killTimers(self):
+        print("%s kill timers" % self.strTitle)
+
+        #if self.timerID.isActive():
+        self.killTimer(self.timerID)
+
+    def open_TCP_connection(self):
+        start_time = time.clock()
+        if self.port_number != 0:
+            try:
+                time_before = time.clock()
+                self.client = AsyncSocketComms.AsyncSocketClient(self.port_number)
+                self.last_update = float("-inf")
+                self.setpoint_change = 0.
+                print('Connection to temp control established.')
+            except:
+                time_after = time.clock()
+                print('open_TCP_connection(): Time taken by AsyncSocketComms.AsyncSocketClient(): %f sec' % (time_after-time_before))
+                self.client = None
+                self.last_update = time.clock()
+                self.setpoint_change = 0.
+        else:
+            self.client = None
+        end_time = time.clock()
+        print('open_TCP_connection(): Time taken: %f sec' % (end_time-start_time))
+
+    def initBuffer(self):
+#        print('initBuffer')
+        self.gate_time_counter = self.sll.daq.get_counter_period()
+        self.gate_time_dacs = self.sll.daq.get_counter_period()
+        try:
+            self.N_history_counters = int(round(float(self.qedit_history.text()) / self.gate_time_counter))
+            self.N_history_dacs = int(round(float(self.qedit_history.text()) / self.gate_time_dacs))
+        except:
+            self.N_history_counters = int(round(10 / self.gate_time_counter))
+            self.N_history_dacs = int(round(10 / self.gate_time_dacs))
+
+        self.DAC_history = np.zeros(self.N_history_dacs)
+        self.DAC_mean_history = np.zeros(self.N_history_dacs)*np.nan
+        self.DAC_thrsh_history = np.zeros(self.N_history_dacs)*np.nan
+
+        self.freq_history = np.zeros(self.N_history_counters)
+#        self.time_history = np.zeros(self.N_history)
+
+        self.time_history_counters = np.linspace(-self.N_history_counters+1, 0, self.N_history_counters) * self.gate_time_counter
+        self.time_history_dacs = np.linspace(-self.N_history_dacs+1, 0, self.N_history_dacs) * self.gate_time_dacs
+        self.bValid_counters = (np.zeros(self.N_history_counters) == 1)
+        self.bValid_dacs = (np.zeros(self.N_history_dacs) == 1)
+        self.bVeryFirst = True
+
+    def openOutputFiles(self):
+        # Create the subdirectory if it doesn't exist:
+        os.makedirs('data_logging', exist_ok=True)
+
+        # Open file for output
+        strCurrentName1 = self.strNameTemplate + 'freq_counter0.bin'
+        strCurrentName2 = self.strNameTemplate + 'freq_counter1.bin'
+        strCurrentName3 = self.strNameTemplate + 'freq_counter0_time_axis.bin'
+        strCurrentName4 = self.strNameTemplate + 'DAC0.bin'
+        strCurrentName5 = self.strNameTemplate + 'DAC1.bin'
+        strCurrentName6 = self.strNameTemplate + 'DAC2.bin'
+        self.file_output_counter0 = open(strCurrentName1, 'wb')
+        self.file_output_counter1 = open(strCurrentName2, 'wb')
+        self.file_output_time = open(strCurrentName3, 'wb')
+        self.file_output_dac0 = open(strCurrentName4, 'wb')
+        self.file_output_dac1 = open(strCurrentName5, 'wb')
+        self.file_output_dac2 = open(strCurrentName6, 'wb')
+
+    def chkTriangular_checked(self):
+        if self.qchk_triangular.isChecked():
+            self.sll.daq.set_counter_mode(True)
+        else:
+            self.sll.daq.set_counter_mode(False)
+        print('Updating counter mode')
+
+    def getTriangular_checked(self):
+        self.bTriangularAveraging = self.sll.daq.get_counter_mode()
+
+        self.qchk_triangular.blockSignals(True)
+        self.qchk_triangular.setChecked(self.bTriangularAveraging)
+        self.qchk_triangular.blockSignals(False)
 
     def center(self):
 
@@ -523,8 +503,15 @@ class FreqErrorWindowWithTempControlV2(QtGui.QWidget):
 
     def displayFreqCounter(self):
         try:
-            counter_result = self.sll.daq.read_dual_mode_counter()
-            (freq_counter_sample, DAC_output) = counter_result[self.output_number]
+            new_counter_sample_number, counter_result = self.sll.daq.read_dual_mode_counter()
+            sample_incr = abs(new_counter_sample_number - self.counter_sample_number)
+            if sample_incr >= 1:
+                (freq_counter_sample, DAC_output) = counter_result[self.output_number]
+                if sample_incr > 1 and self.counter_sample_number != 0 and new_counter_sample_number != 0:
+                    print("Warning, {:d} counter sample(s) dropped" .format(sample_incr - 1))
+            else:
+                (freq_counter_sample, DAC_output) = (None, None)
+            self.counter_sample_number = new_counter_sample_number
         except:
             print('Exception occured reading counter data. disabling further updates.')
             self.killTimer(self.timerID)

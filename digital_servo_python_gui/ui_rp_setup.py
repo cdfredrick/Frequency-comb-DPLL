@@ -10,7 +10,7 @@ import time
 
 from PyQt5 import QtGui, Qt
 
-import UDPRedPitayaDiscovery
+import ui_udp_rp_discovery
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 
@@ -39,7 +39,7 @@ class initialConfiguration(QtGui.QDialog):
         self.controller = controller
 
         # create the UDP discovery object:
-        self.udp_discovery = UDPRedPitayaDiscovery.UDPRedPitayaDiscovery(self.strBroadcastAddress)
+        self.udp_discovery = ui_udp_rp_discovery.UDPRedPitayaDiscovery(self.strBroadcastAddress)
         self.reset_list_and_send_broadcast()
         self.timerID = self.startTimer(int(100))
 

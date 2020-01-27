@@ -4,14 +4,11 @@ by JD Deschenes, October 2013
 
 """
 
-import time
 from PyQt5 import QtGui, Qt
-import numpy as np
 
 from user_friendly_QLineEdit import user_friendly_QLineEdit
-
-import weakref
 from digital_servo import SuperLaserLand
+
 
 class DisplayDitherSettingsWindow(QtGui.QWidget):
 
@@ -20,17 +17,13 @@ class DisplayDitherSettingsWindow(QtGui.QWidget):
 
         super(DisplayDitherSettingsWindow, self).__init__()
 
-
-
         self.output_number = output_number
-        self.sll = weakref.proxy(sll)
+        self.sll = sll
         self.sp = sp
         self.setObjectName('MainWindow')
         self.setStyleSheet(custom_style_sheet)
 
-
         self.initUI(modulation_frequency_in_hz, output_amplitude, integration_time_in_seconds, bEnableDither)
-
 
     def loadParameters(self):
         strDAC = 'DAC{:01d}'.format(self.output_number)

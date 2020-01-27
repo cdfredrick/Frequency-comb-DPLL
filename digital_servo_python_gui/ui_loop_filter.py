@@ -8,7 +8,6 @@ Description: Provides a graphical user interface (GUI) for setting the loop filt
 from PyQt5 import QtGui, Qt, QtCore
 #import PyQt5.Qwt5 as Qwt
 import numpy as np
-import weakref
 
 import traceback
 
@@ -30,7 +29,7 @@ class LoopFiltersUI(Qt.QWidget):
 #        print('LoopFiltersUI::__init__(): Entering')
 
         # We need sll here because we need to pass it to the pll object, and we need ADC_CLK_Hz to set the correct loop filter gain, because the integrators transfer function depends on that ADC_CLK_Hz
-        self.sll = weakref.proxy(sll)
+        self.sll = sll
         self.filter_number = filter_number
         self.clock_freq_Hz = self.sll.dev.clock_freq_Hz()
         # All the gains here are normalized to the DC, open-loop gain of the overall system:

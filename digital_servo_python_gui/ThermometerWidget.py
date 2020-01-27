@@ -1,24 +1,8 @@
 # Qt Widget to replace Qwt's thermometer widget (vertical only for now) so that we can remove dependency on this package
 # JDD 2017-06-04
 
-
-
-
-#from PyQt5 import QtGui, Qt, QtCore, QtWidgets
-##import PyQt5.Qwt5 as Qwt
-#import numpy as np
 import sys
-
-
-from PyQt5 import QtGui, Qt, QtCore, QtWidgets
-#from PyQt5 import QtGui, Qt
-#import PyQt5.Qwt5 as Qwt
-import numpy as np
-
-
-
-# stuff for Python 3 port
-#import pyqtgraph as pg
+from PyQt5 import Qt, QtCore, QtWidgets
 
 
 class ThermometerWidget(QtWidgets.QWidget):
@@ -37,7 +21,7 @@ class ThermometerWidget(QtWidgets.QWidget):
         self.text_margin = 6
         self.ticks_width = 8
         self.minor_ticks_width = 5
-        
+
         self.lblTicks = list()
         self.qline_ticks = list()
         self.qline_minor_ticks = list()
@@ -59,7 +43,7 @@ class ThermometerWidget(QtWidgets.QWidget):
         self.setRange(min_value, max_value)
 
     def setValue(self, value):
-        
+
         # assign value with bounds checking
         if value > self.max_value:
             self.value = self.max_value
@@ -83,7 +67,7 @@ class ThermometerWidget(QtWidgets.QWidget):
 
     def setTicks(self, ticksValuesList, minorTicksValuesList, ticksTextList):
 
-        
+
         # we need a black background to create the lines
         PaletteBlack = Qt.QPalette()
         PaletteBlack.setColor(Qt.QPalette.Background, Qt.Qt.black)
@@ -124,14 +108,14 @@ class ThermometerWidget(QtWidgets.QWidget):
         # Update widgets positions:
         self.resizeEvent(None)
 
-        
+
     def resizeEvent(self, event):
         #print("resizeEvent()")
         # self.blockSignals(True) # block signals to prevent creating an infinite loop
         # Update back widget size:
         total_size = self.size()
         self.bck_label.setFixedHeight(total_size.height())
-        
+
         self.bck_label.move(self.widest_tick_label+2*self.text_margin+self.ticks_width, 0)
         # Update overall Widget's size
         self.setFixedWidth(self.bar_width+2*self.border_width+self.widest_tick_label+2*self.text_margin+self.ticks_width)
@@ -163,7 +147,7 @@ class ThermometerWidget(QtWidgets.QWidget):
             horiz_pos = 2*self.text_margin + self.widest_tick_label
             #self.qline_ticks[index].setLine(horiz_pos, vert_pos-round(self.qline_ticks[index].size().height()/2.), horiz_pos+self.ticks_width, vert_pos-round(self.qline_ticks[index].size().height()/2.))
             self.qline_ticks[index].setFixedSize(self.ticks_width, 1)
-            self.qline_ticks[index].move(horiz_pos, vert_pos-round(self.qline_ticks[index].size().height()/2.)-self.border_width)            
+            self.qline_ticks[index].move(horiz_pos, vert_pos-round(self.qline_ticks[index].size().height()/2.)-self.border_width)
 
         # Update ticks and tick labels positions (minor ticks):
         for index, elem in enumerate(self.minorTicksValuesList):
@@ -176,7 +160,7 @@ class ThermometerWidget(QtWidgets.QWidget):
             #self.qline_minor_ticks[index].setLine(horiz_pos, vert_pos-round(self.qline_minor_ticks[index].size().height()/2.), horiz_pos+self.minor_ticks_width, vert_pos-round(self.qline_minor_ticks[index].size().height()/2.))
             self.qline_minor_ticks[index].setFixedSize(self.minor_ticks_width, 1)
             self.qline_minor_ticks[index].move(horiz_pos, vert_pos-round(self.qline_minor_ticks[index].size().height()/2.)-self.border_width)
-            
+
 
         # self.blockSignals(False)
 
@@ -188,7 +172,7 @@ class ThermometerWidget(QtWidgets.QWidget):
         # add border to back label:
         self.bck_label.setStyleSheet('border: %dpx solid black' % self.border_width)
 
-        
+
         self.front_label.setFixedWidth(self.bar_width)
         self.bck_label.setFixedWidth(self.bar_width+2*self.border_width)
         self.front_label.setMinimumHeight(self.bar_height)
@@ -206,12 +190,12 @@ class ThermometerWidget(QtWidgets.QWidget):
 
 
 if __name__ == '__main__':
-    
+
     #app = QApplication(sys.argv)
     app = QtCore.QCoreApplication.instance()
     if app is None:
         app = QtWidgets.QApplication(sys.argv)
-    
+
     ex = ThermometerWidget()
     ex.setFillColor(Qt.Qt.blue)
     ex.setValue(0.2)
@@ -221,6 +205,5 @@ if __name__ == '__main__':
     ex.setTicks(ticksListMajor, ticksListMinor, ticksLabelMajor)
     ex.show()
     app.exec_()
-    #sys.exit(app.exec_())  
-    
-    
+    #sys.exit(app.exec_())
+

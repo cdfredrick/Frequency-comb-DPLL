@@ -8,32 +8,21 @@ import time
 from PyQt5 import QtGui, Qt
 #import PyQt5.Qwt5 as Qwt
 import numpy as np
-import math
-from scipy.signal import lfilter
+
 from scipy.signal import decimate
 from scipy.signal import detrend
 
 import os
-import errno
 
-#from SuperLaserLand_JD2 import SuperLaserLand_JD2
-from LoopFiltersUI import LoopFiltersUI
+from ui_loop_filter import LoopFiltersUI
 from ui_vna_control import DisplayVNAWindow
-#from LoopFiltersUI_DAC1_and_DAC2 import LoopFiltersUI_DAC1_and_DAC2
-from DisplayDitherSettingsWindow import DisplayDitherSettingsWindow
-#from DisplayCrashMonitorWindow import DisplayCrashMonitorWindow
-#from ILX_laser_control import ILX_laser_control
-#from PyDAQmx_single_1 import NIDAQ_USB
-#from NIUSB_DAQ import Instrument
+
 from user_friendly_QLineEdit import user_friendly_QLineEdit
 
 from digital_servo import SuperLaserLand
-#import matplotlib.pyplot as plt
-
-import traceback
 
 
-# stuff for Python 3 port
+
 import pyqtgraph as pg
 from ThermometerWidget import ThermometerWidget # to replace Qwt's thermometer widget
 
@@ -436,7 +425,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
 
     def showVNA(self):
-        self.vna = DisplayVNAWindow(self.sll)
+        self.vna = DisplayVNAWindow(self.sll, self.selected_ADC)
 
 
 
@@ -532,10 +521,6 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 
     def reset_front_end(self):
         self.sll.dev.reset_front_end()
-
-
-    def openDitherControls(self):
-        self.dither_settings = DisplayDitherSettingsWindow(self.sll)
 
     def setLock(self):
         bLock = self.qloop_filters[self.selected_ADC].qchk_lock.isChecked()
@@ -806,11 +791,6 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
 #        self.qchk_lock.setStyleSheet('font-size: 18pt; color: white; background-color: green')
         self.qchk_lock.clicked.connect(self.chkLockClickedEvent)
         self.qchk_lock.setChecked(False)
-
-
-        # Button which opens the dither controls:
-        self.qbutton_dither_controls = Qt.QPushButton('')
-        self.qbutton_dither_controls.clicked.connect(self.openDitherControls)
 
         # VCO sign:
         self.qsign_positive = Qt.QRadioButton('VCO sign +')
@@ -1575,7 +1555,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
                     else:
                         open_loop_gain, gain_units = self.sll.loop_filter.read_dither_result(k)
                         self.VCO_detected_gain_in_Hz_per_Volts[k] = open_loop_gain
-                        self.qlabel_detected_vco_gain[k].setText('{:.2e} {:}'.format(open_loop_gain, gain_units))
+                        self.qlabel_detected_vco_gain[k].setText('{:.1e} {:}'.format(open_loop_gain, gain_units))
                         elapsed_time = time.clock() - start_time
         #                print('Elapsed time (timerDitherEvent) = %f ms' % (1000*elapsed_time))
 
@@ -2017,7 +1997,7 @@ class XEM_GUI_MainWindow(QtGui.QWidget):
             start_time = time.clock()
 
             spc = np.real(spc * np.conj(spc))/(np.sum(window_function)**2/4)
-            spc = 10*np.log10(spc + 1e-13)
+            spc = 10*np.log10(spc)
 
 
             if self.bDisplayTiming == True:

@@ -3,13 +3,13 @@
 #TODO: module docstring...
 """
 
-import copy
 import socket
 import struct
 import sys
 import time
 import threading
 import traceback
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -48,6 +48,94 @@ class SuperLaserLand:
         self.loop_filter = LoopFilter(self.dev)
         self.dac = DigitalToAnalogConverter(self.dev)
         self.daq = DataAcquisition(self.dev)
+
+class SLLSystemParameters():
+    values_dict = {}
+
+    def __init__(self, sll):
+        assert isinstance(sll, SuperLaserLand)
+        self.sll = sll
+
+        self.populateDefaults()
+
+        return
+
+    def populateDefaults(self):
+        # Create the tree structure:
+        self.root = ET.Element('SuperLaserLandPLL_settings')
+        self.tree = ET.ElementTree(self.root)
+
+        # Default values for all the parameters:
+        self.root.append(ET.Element('Reference_frequency', DDC0='31.25e6', DDC1='31.25e6'))
+        self.root.append(ET.Element('VCO gain', DAC0='2e8', DAC1='0.5e6', DAC2='9e6'))
+        self.root.append(ET.Element('Output_limits_low', DAC0='-1.0', DAC1='-0', DAC2='0'))
+        self.root.append(ET.Element('Output_limits_high', DAC0='1.0', DAC1='1', DAC2='55'))
+        self.root.append(ET.Element('Input_Output_gain', ADC0='1', ADC1='1', DAC0='1', DAC1='1'))
+        self.root.append(ET.Element('Output_offset_in_volts', DAC0='0.0274', DAC1='0', DAC2='27'))
+        self.root.append(ET.Element('PLL0_settings', kp='10', fi='45e3', fii='3.4e3', fd='1', fdf='1', chkKd='False', chkKp='False', chkLock='False', chkKpCrossing='False'))
+        self.root.append(ET.Element('PLL1_settings', kp='-5.6', fi='141e3', fii='3.24e3', fd='1', fdf='1', chkKd='False', chkKp='True', chkLock='False', chkKpCrossing='True'))
+        self.root.append(ET.Element('PLL2_settings', kp='-120', fi='1e-2', fii='0', fd='1', fdf='1', chkKd='False', chkKp='False', chkLock='False', chkKpCrossing='False'))
+
+        self.root.append(ET.Element('PWM0_settings', standard='3.3', levels='256', default='0.0', minval='0.0', maxval='3.3'))
+
+        self.root.append(ET.Element('Main_window_settings', refresh_delay='500', N_samples_adc='1.75e3', N_samples_ddc='1e6', Integration_limit='5e6'))
+        self.root.append(ET.Element('Triangular_averaging', DAC1='1', DAC0='1'))
+
+        self.root.append(ET.Element('Dither_frequency', DAC1='5.1e3', DAC0='1e3'))
+        self.root.append(ET.Element('Dither_integration_time', DAC1='0.1', DAC0='0.1'))
+        self.root.append(ET.Element('Dither_amplitude', DAC1='1e.3', DAC0='1e-3'))
+        self.root.append(ET.Element('Dither_mode', DAC1='2', DAC0='2'))
+
+        self.root.append(ET.Element('VCO_settings', VCO_offset='0.00', VCO_amplitude='0.5', VCO_connection='0'))
+        self.root.append(ET.Element('RP_settings', Fan_state='0', PLL1_connection='0'))
+        self.root.append(ET.Element('Filter_select', DAC1='0', DAC0='0'))
+        self.root.append(ET.Element('Angle_select', DAC1='0', DAC0='0'))
+
+    def loadFromFile(self, strFilename):
+        self.tree = ET.parse(strFilename)
+        self.root = self.tree.getroot()
+
+        # we used to do error checking at this level, but now it is implemented one layer higher in the hierarchy (currently in main_gui.py)
+        # try:
+            # self.tree = ET.parse(strFilename)
+            # self.root = self.tree.getroot()
+        # except IOError:
+        #     print("IOError when trying to parse configuration file %s. using default values" % (strFilename))
+        #     self.populateDefaults()
+        # return
+
+    def saveToFile(self, strFilename):
+        self.tree.write(strFilename)
+        return
+
+    def getValue(self, strKey, strParameter):
+        return self.tree.find(strKey).attrib[strParameter]
+
+    def setValue(self, strKey, strParameter, strValue):
+        self.tree.find(strKey).attrib[strParameter] = strValue
+
+    def sendToFPGA(self, bSendToFPGA = True):
+
+        # Set the DAC output limits:
+        limit_low = float(self.getValue('Output_limits_low', 'DAC0'))    # the limit is in volts
+        limit_high = float(self.getValue('Output_limits_high', 'DAC0'))    # the limit is in volts
+        self.sll.dac.set_dac_limits_V(0, limit_low, limit_high)
+        limit_low = float(self.getValue('Output_limits_low', 'DAC1'))    # the limit is in volts
+        limit_high = float(self.getValue('Output_limits_high', 'DAC1'))    # the limit is in volts
+        self.sll.dac.set_dac_limits_V(1, limit_low, limit_high)
+        limit_low = float(self.getValue('Output_limits_low', 'DAC2'))    # the limit is in volts
+        limit_high = float(self.getValue('Output_limits_high', 'DAC2'))    # the limit is in volts
+        self.sll.dac.set_dac_limits_V(2, limit_low, limit_high)
+        ##
+        ## HB, 4/27/2015, Added PWM support on DOUT0
+        ##
+        PWM0_standard = float(self.getValue('PWM0_settings', 'standard'));
+        PWM0_levels   = int(self.getValue('PWM0_settings', 'levels'));
+        PWM0_default  = float(self.getValue('PWM0_settings', 'default'));
+        # Convert to counts
+        value_in_counts = self.sll.dac.pwm_output_int(PWM0_standard, PWM0_levels, PWM0_default)
+        # Send to FPGA
+        self.sll.dac.set_pwm_settings(PWM0_levels, value_in_counts, bSendToFPGA)
 
 
 #%% Red Pitaya Clases
@@ -768,7 +856,7 @@ class LoopFilter:
                 two actuators)
             - register_value = 2:
                 the output of channel 0's loop filter (allows locking the DAC0
-                actuator in the center of its range)
+                actuator to the center of its range)
         '''
         if channel == 1:
             self.dev.write_Zynq_register_uint16(
@@ -1498,21 +1586,17 @@ class DataAcquisition:
         new_counter_sample_number = self.dev.read_Zynq_register_uint32(
             legacy_read_address(BUS_ADDR_ZERO_DEADTIME_SAMPLES_NUMBER))
         sample_incr = new_counter_sample_number - self.counter_sample_number
-        if sample_incr != 0:
-            # Read Counter Channel 0
-            freq_counter0_sample = self.dev.read_Zynq_register_int64(
-                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_LSBS),
-                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_MSBS))
-            # Read Counter Channel 1
-            freq_counter1_sample = self.dev.read_Zynq_register_int64(
-                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_LSBS),
-                    legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_MSBS))
-            if sample_incr>1 and self.counter_sample_number != 0:
-                print("Warning, %d counter sample(s) dropped" % (new_counter_sample_number-self.counter_sample_number-1))
-        else:
-            # we have already read all the counter samples for this output
-            freq_counter0_sample = None
-            freq_counter1_sample = None
+        # Read Counter Channel 0
+        freq_counter0_sample = self.dev.read_Zynq_register_int64(
+                legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_LSBS),
+                legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER0_MSBS))
+        # Read Counter Channel 1
+        freq_counter1_sample = self.dev.read_Zynq_register_int64(
+                legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_LSBS),
+                legacy_read_address(BUS_ADDR_ZERO_DEADTIME_COUNTER1_MSBS))
+        # if sample_incr>1 and self.counter_sample_number != 0:
+        #     print("Warning, %d counter sample(s) dropped" % (new_counter_sample_number-self.counter_sample_number-1))
+
         self.counter_sample_number = new_counter_sample_number
 
         dac0_samples = self.dev.read_Zynq_register_int16(
@@ -1526,8 +1610,9 @@ class DataAcquisition:
         if freq_counter1_sample is not None:
             freq_counter1_sample = self.counter_frequency_Hz(freq_counter1_sample)
 
-        return ((freq_counter0_sample, dac0_samples),
-                (freq_counter1_sample, dac1_samples))
+        return (new_counter_sample_number,
+                ((freq_counter0_sample, dac0_samples),
+                 (freq_counter1_sample, dac1_samples)))
 
     ###########################################################################
     #--- Counter Helper Functions:
@@ -1765,7 +1850,7 @@ class DataAcquisition:
         # print("Overal Gain {:}".format(overall_gain))
         # print("Output Gain {:}".format(self.output_gain))
         # print("Integration Time {:}".format(integration_time))
-        print(self.number_of_cycles_integration)
+        # print(self.number_of_cycles_integration)
 #        overall_gain = 1
         # print('TODO: Remove this line! overallgain = 1')
         transfer_function_real = (integrator_real.astype(np.float)) / (overall_gain)

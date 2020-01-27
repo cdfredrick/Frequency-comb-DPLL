@@ -12,19 +12,18 @@ import time
 from PyQt5 import QtGui, Qt, QtCore, QtWidgets
 
 
-from digital_servo import SuperLaserLand
-from XEM_GUI_MainWindow import XEM_GUI_MainWindow
-from FreqErrorWindowWithTempControlV2 import FreqErrorWindowWithTempControlV2
-from initialConfiguration_RP import initialConfiguration
-from SLLSystemParameters import SLLSystemParameters
+from digital_servo import SuperLaserLand, SLLSystemParameters
+from ui_main_window import XEM_GUI_MainWindow
+from ui_telemetry_and_slow_feedback import FreqErrorWindowWithTempControlV2
+from ui_rp_setup import initialConfiguration
 
-from DisplayDitherSettingsWindow import DisplayDitherSettingsWindow
+from ui_dither_lockin_settings import DisplayDitherSettingsWindow
 
-from DisplayDividerAndResidualsStreamingSettingsWindow import DisplayDividerAndResidualsStreamingSettingsWindow
+from ui_error_signal_settings import ErrorSignalSettingsUI
 
-from ConfigurationRPSettingsUI import ConfigRPSettingsUI
+from ui_rp_settings import ConfigRPSettingsUI
 
-from devicesData import devicesData
+from device_defaults import devicesData
 
 
 class controller(object):
@@ -63,46 +62,13 @@ class controller(object):
     def main(self):
         # Start the User Interface
 
-
-
         bTriggerEvents = False
         bConnectedRP = False
         self.strSelectedSerial = "000000000000"
 
-        # if self.initial_config.bOk == False:
-        #     # User clicked cancel. simply close the program:
-        #     return
-
-        # if self.initial_config.qradio_pushValue.isChecked():
-        #     print("Push")
-        #     bTriggerEvents = True
-        #     bConnectedRP = True
-        #     self.loadDefaultValueFromConfigFile(self.initial_config.strSelectedSerial)
-        # elif self.initial_config.qradio_existingRP.isChecked():
-        #     print("Reconnection")
-        #     bTriggerEvents = False
-        #     bConnectedRP = True
-        # elif self.initial_config.qradio_noRP.isChecked():
-        #     print("No RP")
-        #     bTriggerEvents = False
-        #     bConnectedRP = False
-
-
         bUpdateFPGA = bTriggerEvents
         bSendToFPGA = bTriggerEvents
 
-        ###########################################################################
-        # Create the object which handles the configuration parameters (DAC offsets, DAC gains, beat frequency modulation range, etc):
-        #sp = SLLSystemParameters()
-
-
-
-    #    config_window = SLLConfigurationWindow()
-    #    config_window.loadParameters(sp)
-    #    config_window.hide()
-
-
-        ###########################################################################
         # Load all our windows:
 
         # Style sheet which includes the color scheme for each specific box:
@@ -125,7 +91,7 @@ class controller(object):
         # 200 MHz/(2*(modulus+1))
         # While for the pulsed mode (bPulses = 1), the frequency is:
         # 200 MHz/(modulus+1)
-        self.divider_settings_window = DisplayDividerAndResidualsStreamingSettingsWindow(self.sll, self.sp, clk_divider_modulus=67e3, bDividerOn=0, bPulses=0, custom_style_sheet=custom_style_sheet, custom_shorthand=custom_shorthand)
+        self.divider_settings_window = ErrorSignalSettingsUI(self.sll, self.sp, clk_divider_modulus=67e3, bDividerOn=0, bPulses=0, custom_style_sheet=custom_style_sheet, custom_shorthand=custom_shorthand)
 
 
         # Optical lock window
@@ -176,18 +142,22 @@ class controller(object):
         self.settings_window = Qt.QWidget()
         self.settings_window.setObjectName('MainWindow')
         self.settings_window.setStyleSheet(custom_style_sheet)
+
         vbox1 = Qt.QVBoxLayout()
         vbox1.addWidget(self.dither_widget0)
         vbox1.addWidget(self.dither_widget1)
-        #vbox1.addWidget(dither_widget2)
         vbox1.addStretch(1)
+
         vbox2 = Qt.QVBoxLayout()
-        vbox2.addWidget(self.RP_Settings)
         vbox2.addWidget(self.divider_settings_window)
+        vbox2.addWidget(self.RP_Settings)
+        vbox2.addStretch(1)
+
         hbox = Qt.QHBoxLayout()
         hbox.addLayout(vbox1)
         hbox.addLayout(vbox2)
         hbox.addStretch(1)
+
         self.settings_window.setLayout(hbox)
         self.settings_window.setWindowTitle(custom_shorthand + ': Dither controls')
         #self.settings_window.show()
